@@ -1,0 +1,4 @@
+[submodule "deps/obelisk"]
+	path = deps/obelisk
+	url = https://github.com/jafonsor/obelisk.git
+	shallow = true
