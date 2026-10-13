@@ -3,13 +3,19 @@
 {
 
   # The nixpkgs driver has no wasm compiler of its own. The ghc-wasm-meta
-  # bindist gives it one. The haskell.nix driver builds its own, so the
-  # bindist is scoped to the driver that needs it. The series matches that
-  # driver's own compiler.
+  # bindist gives it one. The haskell.nix driver builds its own, but on
+  # darwin that compiler is not in the binary caches and builds from source
+  # for hours, so it takes the bindist too (as release.nix's `wasm-meta`
+  # variant does in the obelisk repo). Each series matches that driver's own
+  # compiler.
   imports = [
     (import "${nix-haskell-compilers}/ghc-wasm-meta" {
       flavour = "9.12";
       drivers = [ "nixpkgs" ];
+    })
+    (import "${nix-haskell-compilers}/ghc-wasm-meta" {
+      flavour = "9.14";
+      drivers = [ "haskell-nix" ];
     })
   ];
 
