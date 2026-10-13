@@ -42,6 +42,10 @@
       # ghcjs
     ];
     withHoogle = true;
+
+    # The shell points DEVELOPER_DIR at nix's Apple SDK, and macOS's
+    # /usr/bin/git is a shim that follows it ("tool 'git' not found").
+    nativeBuildInputs = [ pkgs.git ];
   };
 
 }
