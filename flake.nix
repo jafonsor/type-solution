@@ -19,10 +19,7 @@
 
       packages = eachSystem (system:
         let project = import ./default.nix { inherit system inputs; };
-            release = import ./release.nix { inherit system inputs; };
         in rec {
-          inherit release;
-
           default = haskell-nix;
           haskell-nix = project.haskell-nix.serverExe.wasm;
           nixpkgs = project.nixpkgs.serverExe.js;
