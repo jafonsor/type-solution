@@ -1,0 +1,20 @@
+cabal-version: 3.4
+name:          frontend
+version:       0.1.0.0
+build-type:    Simple
+
+executable frontend
+  main-is:          Main.hs
+  hs-source-dirs:   app
+  default-language: GHC2021
+  build-depends:
+      base
+    , reflex-dom
+    , text
+
+  ghc-options: -Wall
+
+  -- Same link flags as the Obelisk skeleton: a WASI reactor module that
+  -- exports `hs_start` for the JS bootstrap (www/all.js) to call.
+  if arch(wasm32)
+    ghc-options: -no-hs-main -optl-mexec-model=reactor "-optl-Wl,--export=hs_start"

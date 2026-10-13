@@ -1,0 +1,8 @@
+{
+  "name": "prototype-reflex-wasm",
+  "private": true,
+  "description": "PROTOTYPE, throwaway: reflex-dom -> wasm on macOS without Obelisk's nix.",
+  "devDependencies": {
+    "@bjorn3/browser_wasi_shim": "0.4.2"
+  }
+}

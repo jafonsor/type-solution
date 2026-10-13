@@ -1,0 +1,10 @@
+--- a/src-wasm/Language/Javascript/JSaddle/Wasm/Internal.hs
++++ b/src-wasm/Language/Javascript/JSaddle/Wasm/Internal.hs
+@@ -47,6 +47,7 @@
+                          BLC8.unlines $
+                            [ JSaddle.Files.initState,
+                              "var syncDepth = 0;",
++                             "var initialSyncDepth = 0;",
+                              "(async () => {",
+                              "  while (true) {",
+                              "    const batch = JSON.parse(await $3());",

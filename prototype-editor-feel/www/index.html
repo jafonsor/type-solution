@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="connect-src 'self' ws://localhost:*">
+<title>PROTOTYPE: editor feel</title>
+<style>
+  :root { --bg: #fafaf7; --fg: #1d1d1b; --muted: #8a8a84; --line: #e2e2dc; --ok: #1f9d55; --bad: #d64545; --warn: #d69e2e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  #app { max-width: 820px; margin: 0 auto; padding: 32px 16px 140px; }
+  .sig { font: 600 18px ui-monospace, monospace; }
+  .prompt { color: #444; margin: 4px 0 16px; }
+  #editor .cm-editor { background: #fff; border: 1px solid var(--line); border-radius: 6px; font-size: 16px; min-height: 220px; }
+  #editor .cm-scroller { font-family: ui-monospace, "JetBrains Mono", monospace; min-height: 220px; }
+  .cm-focused { outline: none !important; }
+  #lastrun { margin-top: 14px; color: var(--muted); font-size: 14px; min-height: 1.5em; }
+  #lastrun.flash { color: var(--ok); font-size: 18px; }
+
+  /* A: ghost text + count */
+  .ghost { color: #b8b8b0; font-style: italic; pointer-events: none; }
+  .statusline { display: flex; gap: 10px; align-items: center; margin-top: 8px; color: var(--muted); font-size: 14px; }
+  .spacer { flex: 1; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--line); display: inline-block; }
+  .dot.checking, .dot.typing { background: #c9c9c2; }
+  .dot.failing, .dot.timeout { background: var(--warn); }
+  .dot.passed { background: var(--ok); }
+
+  /* B: hint list + test panel */
+  body.vB #app { max-width: 1120px; }
+  .cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 24px; }
+  @media (max-width: 800px) { .cols { grid-template-columns: 1fr; } }
+  aside { border-left: 1px solid var(--line); padding-left: 20px; font-size: 13px; }
+  aside h3 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+  .test { padding: 6px 0; border-bottom: 1px dashed var(--line); }
+  .test .mark { display: inline-block; width: 1.2em; font-weight: 700; }
+  .test.pass .mark { color: var(--ok); } .test.fail .mark { color: var(--bad); } .test.pending { color: var(--muted); }
+  .test .got { margin-left: 1.2em; color: var(--bad); }
+  .err { color: var(--bad); margin-bottom: 8px; font-family: ui-monospace, monospace; }
+  #stats { margin-top: 8px; color: var(--muted); font-size: 13px; }
+  .hints { font: 14px ui-monospace, monospace; background: #fff; border: 1px solid var(--line); padding: 2px 0; color: var(--muted); }
+  .hints > div { padding: 0 8px; }
+  .hints b { color: var(--fg); font-weight: 600; }
+  .cm-tooltip { border: none !important; background: transparent !important; }
+
+  /* C: zen */
+  body.vC #app { max-width: 720px; padding-top: 48px; }
+  body.vC .timer { font: 300 56px ui-monospace, monospace; text-align: center; color: #c9c9c2; }
+  body.vC .prompt { text-align: center; font-size: 17px; margin: 8px 0 2px; }
+  body.vC .sig { text-align: center; color: var(--muted); font-weight: 400; font-size: 15px; margin-bottom: 18px; }
+  body.vC #editor .cm-editor { border-width: 2px; font-size: 18px; transition: border-color .2s; }
+  body.vC #editor .cm-gutters { display: none; }
+  #editor.border-failing .cm-editor, #editor.border-timeout .cm-editor { border-color: var(--warn); }
+  #editor.border-passed .cm-editor { border-color: var(--ok); }
+  .strip { font: 13px ui-monospace, monospace; color: #b8b8b0; margin-top: 6px; display: flex; gap: 14px; min-height: 1.5em; }
+  .strip b { color: var(--muted); font-weight: 400; }
+  .whisper { margin-top: 10px; font-size: 14px; color: var(--warn); min-height: 1.5em; }
+
+  /* Prototype chrome (not part of the design) */
+  #bar { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #111; color: #fff; border-radius: 999px;
+    padding: 6px 10px; display: flex; gap: 10px; align-items: center; font: 13px system-ui; box-shadow: 0 6px 24px rgba(0,0,0,.25); white-space: nowrap; }
+  #bar button { background: #333; color: #fff; border: 0; border-radius: 999px; width: 28px; height: 28px; cursor: pointer; }
+  #bar input { width: 110px; }
+  #state { position: fixed; left: 8px; bottom: 8px; max-height: 40vh; overflow: auto; font: 10px/1.3 ui-monospace, monospace; color: #999;
+    background: rgba(255,255,255,.85); padding: 6px; margin: 0; border: 1px solid var(--line); max-width: 240px; }
+  @media (max-width: 1100px) { #state { display: none; } }
+</style>
+</head>
+<body>
+  <div id="app"></div>
+  <pre id="state"></pre>
+  <div id="bar">
+    <button id="prev" title="Previous variant">←</button>
+    <span id="vlabel"></span>
+    <button id="next" title="Next variant">→</button>
+    <span style="opacity:.5">|</span>
+    <label>pause <input id="pause" type="range" min="100" max="1500" step="50"></label>
+    <span id="pauseVal"></span>
+    <span style="opacity:.5">| Esc = give up/next</span>
+  </div>
+  <script type="module" src="bundle.js"></script>
+</body>
+</html>

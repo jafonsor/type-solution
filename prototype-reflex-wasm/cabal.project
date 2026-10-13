@@ -1,0 +1,59 @@
+-- reflex-dom -> wasm without Obelisk. Mirrors the dependency pins of
+-- Obelisk v2.0.0.0 (313f684b): lib/cabal.project.config + its reflex-dom
+-- submodule. Build with ./build.sh (needs the wasm32-wasi toolchain on PATH).
+
+packages:
+  frontend
+  vendor/jsaddle-wasm
+
+-- Obelisk's deps/reflex-dom submodule (develop branch), which adds the
+-- jsaddle-wasm run path to reflex-dom.
+source-repository-package
+  type: git
+  location: https://github.com/reflex-frp/reflex-dom.git
+  tag: 7193774e6beb8489f9f843448ade91548ab5f97c
+  subdir: reflex-dom reflex-dom-core
+
+if impl(ghc < 9.14)
+  -- https://github.com/haskellari/splitmix/pull/73
+  -- https://github.com/haskellari/splitmix/pull/75
+  source-repository-package
+    type: git
+    location: https://github.com/alexfmpe/splitmix
+    tag: bd53859c0f41d12f16c3f44fee52f5e9aae26243
+
+-- Obelisk's GHC 9.14 block (lib/cabal.project.config).
+if impl(ghc == 9.14.*)
+  allow-newer:
+      *:base
+    , *:template-haskell
+    , *:ghc-experimental
+    , *:ghc-internal
+    , patch:containers
+  constraints:
+      base < 4.23
+    , template-haskell < 2.25
+    , ghc-experimental < 9.1500
+    , ghc-internal < 9.1500
+
+constraints:
+  -- prim-uniq-0.2 predates the EqP/OrdP superclasses introduced by some-1.1
+    some < 1.1
+  -- reflex-0.9.4.1 predates the superclass changes of semialign-1.4
+  , semialign < 1.4
+  -- Keep the boot packages the wasm bindist ships. Obelisk's lib project
+  -- adds `time >= 1.15` for its GHC 9.14 build; on the 9.12 bindist
+  -- (time-1.14) that forces a Hackage rebuild of time/unix/directory, and
+  -- the rebuilt unix fails to compile for wasm32.
+  , time installed
+  , unix installed
+  , directory installed
+  , filepath installed
+  , os-string installed
+  , process installed
+
+-- Template Haskell on the wasm backend loads shared objects.
+shared: True
+
+allow-newer:
+    *:*

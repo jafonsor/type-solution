@@ -17,3 +17,8 @@ frontend.jsexe.assets
 static/result
 result
 flake.lock
+
+# Prototypes (throwaway; build output)
+node_modules/
+prototype-editor-feel/www/bundle.js
+prototype-reflex-wasm/dist-newstyle/
