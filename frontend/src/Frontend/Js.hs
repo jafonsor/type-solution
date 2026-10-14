@@ -7,6 +7,7 @@ module Frontend.Js
   , createEditor
   , setDoc
   , syntaxError
+  , saveRun
   , Checker
   , newChecker
   , startCheck
@@ -20,16 +21,26 @@ import Data.Text (Text)
 import GHCJS.DOM.Types (Element (..))
 import Language.Javascript.JSaddle
 
+import Common.Run (Key (..))
+
 newtype Editor = Editor JSVal
 
 -- | Mount an editor in the element. The callbacks get the whole document on
--- every change the player makes, and the Escape key.
-createEditor :: Element -> (Text -> JSM ()) -> JSM () -> JSM Editor
-createEditor parent onChange onEscape = do
+-- every change the player makes, the Escape key, and each key press a Run
+-- counts.
+createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Key -> JSM ()) -> JSM Editor
+createEditor parent onChange onEscape onKey = do
   changed <- function \_ _ args -> forM_ (take 1 args) \a ->
     fromJSValUnchecked a >>= onChange
   escaped <- function \_ _ _ -> onEscape
-  Editor <$> (jsg ("TypeSolution" :: Text) # ("createEditor" :: Text) $ (unElement parent, changed, escaped))
+  pressed <- function \_ _ args -> forM_ (take 1 args) \a ->
+    fromJSValUnchecked a >>= \case
+      ("character" :: Text) -> onKey Character
+      "space" -> onKey Space
+      "enter" -> onKey Enter
+      "backspace" -> onKey Backspace
+      _ -> pure ()
+  Editor <$> (jsg ("TypeSolution" :: Text) # ("createEditor" :: Text) $ (unElement parent, changed, escaped, pressed))
 
 -- | Replace the document, without calling the change callback.
 setDoc :: Editor -> Text -> JSM ()
@@ -42,6 +53,10 @@ syntaxError :: Text -> JSM (Maybe Text)
 syntaxError code = do
   r <- jsg ("TypeSolution" :: Text) # ("syntaxError" :: Text) $ [code]
   maybeNullOrUndefined r >>= traverse fromJSValUnchecked
+
+-- | Keep a finished Run (as JSON) in the browser's storage.
+saveRun :: Text -> JSM ()
+saveRun json = void $ jsg ("TypeSolution" :: Text) # ("saveRun" :: Text) $ [json]
 
 -- | The check in flight: its worker and the callback the worker replies to.
 newtype Checker = Checker (IORef (Maybe (JSVal, Function)))

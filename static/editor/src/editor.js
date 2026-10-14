@@ -5,10 +5,13 @@
 // CSS variable (static/src/css/app.css), so the editor follows the page's
 // light and dark schemes.
 //
-//   const editor = TypeSolution.createEditor(parent, onChange, onEscape);
+//   const editor = TypeSolution.createEditor(parent, onChange, onEscape, onKey);
+//     // onKey gets "character", "space", "enter" or "backspace" for each
+//     // such key press the player makes; other keys aren't reported.
 //   editor.setDoc(text);   // replace the document without calling onChange
 //   editor.focus();
 //   TypeSolution.syntaxError(code)  // null, or the parser's message
+//   TypeSolution.saveRun(json)      // append a finished Run to browser storage
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState, Prec } from "@codemirror/state";
 import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
@@ -39,7 +42,19 @@ const highlight = HighlightStyle.define([
   { tag: t.invalid, color: "var(--bad)" },
 ]);
 
-function createEditor(parent, onChange, onEscape) {
+// The kind of key press a Run counts, or null.
+function keyKind(e) {
+  // Shortcuts aren't typing. Option (and AltGr, which reports Ctrl+Alt)
+  // types characters on many layouts, so it is.
+  if (e.isComposing || e.metaKey || (e.ctrlKey && !e.altKey)) return null;
+  if (e.key === " ") return "space";
+  if (e.key === "Enter") return "enter";
+  if (e.key === "Backspace") return "backspace";
+  if (e.key.length === 1) return "character";
+  return null;
+}
+
+function createEditor(parent, onChange, onEscape, onKey) {
   let programmatic = false;
   const view = new EditorView({
     parent,
@@ -51,9 +66,13 @@ function createEditor(parent, onChange, onEscape) {
         keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
         Prec.highest(EditorView.domEventHandlers({
           keydown(e) {
-            if (e.key !== "Escape") return false;
-            onEscape();
-            return true;
+            if (e.key === "Escape") {
+              onEscape();
+              return true;
+            }
+            const kind = keyKind(e);
+            if (kind) onKey(kind);
+            return false;
           },
         })),
         EditorView.updateListener.of((u) => {
@@ -82,4 +101,18 @@ function syntaxError(code) {
   }
 }
 
-window.TypeSolution = { createEditor, syntaxError };
+// Finished Runs live in this browser only. Storage can be unavailable
+// (private windows, blocked site data); the Run is then just not kept.
+const runsKey = "type-solution.runs";
+
+function saveRun(json) {
+  try {
+    const runs = JSON.parse(localStorage.getItem(runsKey) || "[]");
+    runs.push(JSON.parse(json));
+    localStorage.setItem(runsKey, JSON.stringify(runs));
+  } catch (err) {
+    console.warn("Run not saved:", err);
+  }
+}
+
+window.TypeSolution = { createEditor, syntaxError, saveRun };

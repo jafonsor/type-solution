@@ -53,27 +53,29 @@ runWidget workerUrl puzzle = mdo
   (eCode, fireCode) <- newTriggerEvent
   (eEscape, fireEscape) <- newTriggerEvent
   (eReply, fireReply) <- newTriggerEvent
-  editor <- liftJSM $ createEditor (_element_raw box) (liftIO . fireCode) (liftIO (fireEscape ()))
+  (eKey, fireKey) <- newTriggerEvent
+  editor <- liftJSM $ createEditor (_element_raw box)
+    (liftIO . fireCode) (liftIO (fireEscape ())) (liftIO . fireKey)
   checker <- newChecker
 
   let notPassed = (/= Passed) . (.phase) <$> current dRun
 
   -- Every edit stops the check in flight; a pause starts a new one.
-  eEdited <- performEvent $ ffor (gate notPassed eCode) \_ -> do
+  eEdited <- performEvent $ ffor (gate notPassed eCode) \src -> do
     liftJSM (stopCheck checker)
     t <- liftIO getCurrentTime
-    pure [Edited t]
+    pure [Edited t src]
   ePause <- debounce pauseBeforeCheck (gate notPassed eCode)
   eCheck <- zipListWithEvent (,) [1 :: Int ..] ePause
 
   -- Code that doesn't parse fails at once; the rest goes to a worker.
-  eStarted <- performEvent $ ffor eCheck \(n, code) -> liftJSM do
-    syntaxError code >>= \case
+  eStarted <- performEvent $ ffor eCheck \(n, src) -> liftJSM do
+    syntaxError src >>= \case
       Just msg -> do
         t <- liftIO getCurrentTime
         pure (n, False, [CheckStarted n, CheckFinished t n (SyntaxError msg)])
       Nothing -> do
-        startCheck checker workerUrl (checkRequest puzzle code) \reply ->
+        startCheck checker workerUrl (checkRequest puzzle src) \reply ->
           liftIO (fireReply (n, reply))
         pure (n, True, [CheckStarted n])
 
@@ -100,7 +102,14 @@ runWidget workerUrl puzzle = mdo
     pure [Restarted]
 
   dRun <- foldDyn (\es r -> foldl (flip step) r es) newRun $ mergeWith (<>)
-    [eEdited, (\(_, _, es) -> es) <$> eStarted, eFinished, eTimedOut, eRestarted]
+    [ eEdited, (\(_, _, es) -> es) <$> eStarted, eFinished, eTimedOut, eRestarted
+    , (\k -> [Pressed k]) <$> eKey ]
+
+  -- A Run that has just passed is kept in the browser.
+  let eRecord = attachWithMaybe
+        (\old new -> if old.phase /= Passed then runRecord puzzle new else Nothing)
+        (current dRun) (updated dRun)
+  performEvent_ $ liftJSM . saveRun . recordText <$> eRecord
 
   -- The clock, ticking while the Run is under way.
   t0 <- liftIO getCurrentTime
@@ -110,12 +119,12 @@ runWidget workerUrl puzzle = mdo
 
   elClass "div" "status" do
     elClass "span" "clock" $ dynText (seconds <$> dElapsed)
-    elClass "span" "phase" $ dynText (statusText <$> dRun <*> dElapsed)
+    elClass "span" "phase" $ dynText (statusText puzzle <$> dRun <*> dElapsed)
 
   elClass "div" "feedback" $ dyn_ (feedback puzzle <$> dRun)
 
-statusText :: Run -> NominalDiffTime -> Text
-statusText r t = case r.phase of
+statusText :: Puzzle -> Run -> NominalDiffTime -> Text
+statusText puzzle r t = case r.phase of
   NotStarted -> "Start typing: the clock starts on your first keystroke."
   Typing -> ""
   Checking -> "checking…"
@@ -125,7 +134,10 @@ statusText r t = case r.phase of
     Just (Crashed _) -> "crashed"
     Just TimedOut -> "timed out"
     Nothing -> ""
-  Passed -> "Passed in " <> seconds t <> ". Press Esc for another Run."
+  Passed -> case runRecord puzzle r of
+    Just rr -> "Passed in " <> seconds t <> ", " <> tshow (round rr.wpm :: Int) <> " wpm, "
+      <> plural rr.backspaces "backspace" <> ". Press Esc for another Run."
+    Nothing -> "Passed in " <> seconds t <> ". Press Esc for another Run."
 
 -- | Why the last check failed: each failed test with what the Solution
 -- returned, or the error that stopped the tests from running.
@@ -147,6 +159,9 @@ feedback puzzle r = case r.outcome of
 
 seconds :: NominalDiffTime -> Text
 seconds t = T.pack (showFFloat (Just 1) (realToFrac t :: Double) "") <> " s"
+
+plural :: Int -> Text -> Text
+plural n w = tshow n <> " " <> w <> (if n == 1 then "" else "s")
 
 tshow :: Show a => a -> Text
 tshow = T.pack . show

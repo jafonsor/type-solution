@@ -15,3 +15,7 @@ _Avoid_: Session, game, round, heat
 **Solution**:
 The code the player types during a Run.
 _Avoid_: Answer, attempt, submission
+
+**Words per minute**:
+How fast a Run's Solution was typed: each Space or Enter pressed straight after a character key is a word, divided by the Run's minutes.
+_Avoid_: WPM as chars ÷ 5, typing speed

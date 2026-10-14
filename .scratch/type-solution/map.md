@@ -16,9 +16,9 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
   - Audience: developers practising; public web toy, anonymous play.
   - One Puzzle per Run. Clock runs first keystroke → tests pass; Esc gives up (not recorded).
   - Tests re-run on typing pause; auto-advance on pass. No submit key.
-  - Headline score is raw time; also show chars/min and backspace count. Personal bests in the browser.
+  - Headline score is raw time; also show words per minute and backspace count (see 06). Personal bests in the browser.
   - Next Puzzle: random, one-key restart/next. No difficulty filter.
-  - Editor: syntax highlighting + auto-indent; no auto-closing brackets; function-name suggestions shown but never acceptable via Tab/Enter.
+  - Editor: syntax highlighting + auto-indent; no auto-closing brackets; no suggestions (see 04).
   - JavaScript only. Player code runs in-browser (Web Worker + timeout); no server-side game logic.
   - Puzzles are hand-authored config files in the repo, written by coding agents; the app never calls an LLM.
 
@@ -31,6 +31,9 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - [Research: Obelisk v2 WebAssembly frontend size](issues/07-research-wasm-size.md): skeleton app from Obelisk CI: wasm ≈956 KB brotli (5.5 MB raw) vs JS/Closure ≈497 KB brotli (4.0 MB raw); wasm faster to start locally (~45 vs ~130 ms) but ~2× slower on slow links; +CM6 ≈144 KB br; no local build (Obelisk v2 Nix is Linux-only).
 - [Task: get Obelisk v2 building on this Mac](issues/09-task-obelisk-on-mac.md): works without a VM on the jafonsor/obelisk `macos-v2` fork (5 darwin fixes); prod `nix-build …serverExe.wasm-meta.haskell-nix.wasm`, dev `nix-shell …-A shell.wasm-meta.haskell-nix` + `ob-run` (~15 s rebuild).
 - [Grilling: Obelisk compile target](issues/08-grilling-compile-target.md): WebAssembly for dev and prod; JS backend out of scope (accepting ~2× download on slow links).
+- [Prototype: editor feel and auto-advance](issues/04-prototype-editor-feel.md): 400 ms pause, failed tests listed below the editor, no suggestions; built as the real fizzBuzz Run.
+- [Grilling: Puzzle file format](issues/05-grilling-puzzle-format.md): contents settled as `Common.Puzzle` (function, signature, prompt, JSON tests); file type and location still open.
+- [Grilling: what a Run records and shows](issues/06-grilling-run-record.md): time, words per minute (Space/Enter straight after a character), Backspace presses and the passing Solution, appended to browser storage; personal bests and sharing not decided.
 
 ## Not yet specified
 
