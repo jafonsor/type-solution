@@ -10,7 +10,7 @@ let
     pname = "type-solution-editor";
     version = "0.1.0";
     src = ./editor;
-    npmDepsHash = "sha256-YWRQYBQ5Ma4ax4rbaOwwETllISSXLALN+LoYE+oczIw=";
+    npmDepsHash = "sha256-pChH5S0y7nktUZ4jczTVS6jlyJXBDPf+o8uaXXO8HuY=";
     nativeBuildInputs = [ pkgs.esbuild ];
     dontNpmBuild = true;
     installPhase = ''
