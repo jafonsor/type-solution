@@ -1,4 +1,4 @@
-{ config, lib, pkgs, obeliskLib, nix-haskell-compilers, nix-haskell-patches, ... }:
+{ config, lib, pkgs, obeliskLib, nix-haskell-compilers, ... }:
 
 {
 
@@ -49,20 +49,21 @@
   # same unit ids, and a copy built differently fails to link (dyld "Symbol
   # not found"). Obelisk builds every package with `optimizations.all`
   # (config.ghcOptions) and patches splitmix (nix-haskell's js/splitmix);
-  # neither enters the unit id. So HLS's packages take the same flags,
+  # neither enters the unit id. So HLS's packages take the project's flags,
   # through cabal.project (haskell.nix's project-wide `ghcOptions` is only a
   # default, which the tool plan's per-package options replace), and the
-  # same patch, copied to the same store path as the project's.
+  # project's package patches, both read from the project's config.
   haskell-nix.shell.tools.haskell-language-server = {
     version = "2.14.0.0";
-    modules = [{
-      packages.splitmix.patches = [
-        (builtins.path {
-          name = "splitmix-js.patch";
-          path = "${nix-haskell-patches}/js/splitmix/splitmix-js.patch";
-        })
-      ];
-    }];
+    # Only packages in HLS's own plan: haskell.nix declares an option per
+    # planned package and rejects others (jsaddle-wasm's patch is wasm-only).
+    modules = [
+      ({ options, ... }: {
+        packages = lib.mapAttrs (_: p: { inherit (p) patches; })
+          (lib.filterAttrs (name: p: p.patches != [ ] && options.packages ? ${name})
+            config.haskell-nix.packages);
+      })
+    ];
     cabalProjectLocal = ''
       package *
         ghc-options: ${lib.concatStringsSep " " config.ghcOptions}
