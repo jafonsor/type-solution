@@ -1,0 +1,5 @@
+{
+  // HLS comes from the nix dev shell (loaded by the direnv extension), built
+  // with the project's GHC; not from GHCup.
+  "haskell.manageHLS": "PATH"
+}
