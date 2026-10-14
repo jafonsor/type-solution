@@ -1,8 +1,24 @@
-{ pkgs ? import <nixpkgs> {} }:
-
 # Static assets derivation.
-# Add build steps here (e.g. postcss, tailwind, sass).
-pkgs.stdenv.mkDerivation {
+# The project's pinned nixpkgs by default (static/generate builds this file
+# on its own, and <nixpkgs> would be whatever channel the machine has).
+{ pkgs ? import ../deps/nixpkgs {} }:
+
+let
+  # The CodeMirror editor shim (editor/src/editor.js), bundled into one
+  # script that defines `window.TypeSolution`.
+  editor = pkgs.buildNpmPackage {
+    pname = "type-solution-editor";
+    version = "0.1.0";
+    src = ./editor;
+    npmDepsHash = "sha256-YWRQYBQ5Ma4ax4rbaOwwETllISSXLALN+LoYE+oczIw=";
+    nativeBuildInputs = [ pkgs.esbuild ];
+    dontNpmBuild = true;
+    installPhase = ''
+      esbuild src/editor.js --bundle --format=iife --minify --outfile=$out/editor.js
+    '';
+  };
+
+in pkgs.stdenv.mkDerivation {
   name = "static";
   src = ./src;
   installPhase = ''
@@ -13,5 +29,6 @@ pkgs.stdenv.mkDerivation {
     cp -r icons $out
     cp -r images $out
     cp -r js $out
+    cp ${editor}/editor.js $out/js/editor.js
   '';
 }

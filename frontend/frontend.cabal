@@ -182,7 +182,9 @@ library
 
     -- Modules exported by the library.
     exposed-modules:  Frontend
+                      Frontend.Js
                       Frontend.Paths
+                      Frontend.Run
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -195,10 +197,15 @@ library
                       --
                     , common
                       --
+                    , ghcjs-dom
+                    , jsaddle
                     , obelisk-frontend
                     , obelisk-generated-static
                     , obelisk-route
                     , reflex-dom
+                    , reflex-dom-core
+                    , text
+                    , time
 
     if !(arch(javascript) || arch(wasm32))
       cpp-options:      -DNOT_REPL

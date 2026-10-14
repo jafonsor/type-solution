@@ -182,7 +182,9 @@ library
 
     -- Modules exported by the library.
     exposed-modules:  Common
+                      Common.Puzzle
                       Common.Route
+                      Common.Run
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -193,8 +195,24 @@ library
     -- Other library packages from which modules are imported.
     build-depends:    base
                       --
+                    , aeson
+                    , bytestring
                     , obelisk-route
                     , text
+                    , time
 
     -- Directories containing source files.
     hs-source-dirs:   src
+
+test-suite common-test
+    import:           common
+    type:             exitcode-stdio-1.0
+    main-is:          Main.hs
+    hs-source-dirs:   test
+    build-depends:    base
+                    , aeson
+                    , bytestring
+                    , common
+                    , HUnit
+                    , text
+                    , time
