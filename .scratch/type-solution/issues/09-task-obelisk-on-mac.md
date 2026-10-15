@@ -48,12 +48,15 @@ Likely steps are upgrading Nix, getting a Linux builder working (nix-darwin linu
   - `ob-init` gets GNU sed.
   - Dev shell: `nix-shell skeleton/release.nix -A shell.wasm-meta.haskell-nix` (with the caches as `--option extra-substituters`). The README's `-A haskell-nix` would compile the wasm GHC from source. The first shell build is long because it builds haddocks for every dependency (`withHoogle`).
   - Result: in the skeleton, `ob-run -- --port=8140` serves the app, and the wasm frontend runs in Chrome with a clean console. Editing the h1 in `Frontend.hs` triggered one rebuild/restart in about 15 s, and the new text was served.
+- 2026-10-15: **The Type Solution app runs on the fork** (`macos-v2` at `12f0a43`). Since the answer below:
+  - The app was scaffolded with `ob-init` as a flake, so the dev shell is the flake's `devShells.default`. direnv (`.envrc`, nix-direnv) loads it on `cd` and VS Code's direnv extension uses it; HLS 2.14 for GHC 9.14 is in the shell.
+  - New fork commits: `ob-init` leaves `release.nix` out of new projects; the skeleton gives haskell.nix the ghc-wasm-meta 9.14 bindist on darwin; the shellHook's help and EXIT trap run only in interactive shells (direnv loaded nothing before); nix's git is in the shell on darwin; the dev shell is built without the backend's asset hooks, so loading it no longer compiles the production frontend after a frontend change.
 
 ## Answer
 
 **Yes, for the WebAssembly target, without a Linux VM**, using the fork <https://github.com/jafonsor/obelisk/tree/macos-v2>. It's based on v2.0.0.0, with its nix-haskell submodule at <https://github.com/jafonsor/nix-haskell/tree/macos>. The fork carries five macOS fixes: locale archive, WASI-shim fetch, wasm linker pin, data-dir asset links, and `ob-run`/`ob-init`.
 - **Production:** `nix-build skeleton/release.nix -A serverExe.wasm-meta.haskell-nix.wasm`. A fresh clone reproduces the tested `server-exe`. The app hydrates in Chrome.
-- **Development:** `nix-shell skeleton/release.nix -A shell.wasm-meta.haskell-nix`, then `ob-run`. Rebuild and restart on save take about 15 s.
-- Pass the reflex-frp and IOG caches with `--option extra-substituters`; the Nix 2.24 non-flake path works.
+- **Development (the app, today):** `cd` into the project and direnv loads the dev shell, then `ob-run`. Rebuild and restart on save take about 15 s. The flake's `nixConfig` brings the reflex-frp and IOG caches (`.envrc` passes `--accept-flake-config`). Nix is now 2.34.
+- **Development (the skeleton, as first tested):** `nix-shell skeleton/release.nix -A shell.wasm-meta.haskell-nix`, then `ob-run`, passing the caches with `--option extra-substituters`.
 - The JS target was dropped: see "Grilling: Obelisk compile target".
-- Open, non-blocking: upstream PRs; why haskell.nix's patched LLVM doesn't reach the darwin cross toolchain; `ob-init`, `ob-repl` and `ob-watch` haven't been exercised yet.
+- Open, non-blocking: upstream PRs; why haskell.nix's patched LLVM doesn't reach the darwin cross toolchain; `ob-repl` and `ob-watch` haven't been exercised yet; haskell.nix's `shellFor` forces local packages' hooks (worth an upstream issue).
