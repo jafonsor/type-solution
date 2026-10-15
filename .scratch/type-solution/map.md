@@ -31,13 +31,13 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - [Task: get Obelisk v2 building on this Mac](issues/09-task-obelisk-on-mac.md): works without a VM on the jafonsor/obelisk `macos-v2` fork; the app is built on it. Dev: direnv loads the shell on `cd` (HLS included), then `ob-run`; prod: `nix build` (the flake's default package, the wasm server).
 - [Grilling: Obelisk compile target](issues/08-grilling-compile-target.md): WebAssembly for dev and prod; JS backend out of scope (accepting ~2× download on slow links).
 - [Prototype: editor feel and auto-advance](issues/04-prototype-editor-feel.md): 400 ms pause, failed tests listed below the editor, no suggestions; built as the real fizzBuzz Run.
-- [Grilling: Puzzle file format](issues/05-grilling-puzzle-format.md): contents settled as `Common.Puzzle` (function, signature, prompt, JSON tests); file type and location still open.
+- [Grilling: Puzzle file format](issues/05-grilling-puzzle-format.md): one TOML file per Puzzle in `puzzles/`, read in at compile time; file name is the Puzzle's identity; adds a reference Solution checked against the tests; no `null` values.
 - [Grilling: what a Run records and shows](issues/06-grilling-run-record.md): time, words per minute (Space/Enter straight after a character), Backspace presses and the passing Solution, appended to browser storage; personal bests and sharing not decided.
 
 ## Not yet specified
 
 - Per-key / bigram error heatmap, and Puzzle selection weighted toward the player's weak keys (depends on what a Run records).
-- Puzzle authoring guidelines for coding agents, and the launch bank's size and topic coverage (depends on the Puzzle file format).
+- Puzzle authoring guidelines for coding agents (the TOML layout, name the file after the function, no `null`, a reference Solution), and the launch bank's size and topic coverage.
 - Hosting and deployment of the Obelisk app (frontend + serving-only Snap backend).
 - Sandbox gaps from issue 03, not built yet: the warm spare worker (each check starts a fresh one) and the CSP header that blocks the worker's network access.
 

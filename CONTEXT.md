@@ -8,6 +8,10 @@ A typing-practice game for developers: instead of retyping shown text, the playe
 A small programming problem shown to the player, paired with hidden tests that decide whether a Solution is correct.
 _Avoid_: Challenge, kata, exercise, problem
 
+**Reference Solution**:
+A working Solution written alongside a Puzzle, never shown to the player, that proves the Puzzle's tests can be passed.
+_Avoid_: Answer key, model answer
+
 **Run**:
 One timed attempt at a single Puzzle, from the first keystroke until the Solution passes.
 _Avoid_: Session, game, round, heat
