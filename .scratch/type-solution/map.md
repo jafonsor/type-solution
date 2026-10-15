@@ -33,12 +33,11 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - [Prototype: editor feel and auto-advance](issues/04-prototype-editor-feel.md): 400 ms pause, failed tests listed below the editor, no suggestions; built as the real fizzBuzz Run.
 - [Grilling: Puzzle file format](issues/05-grilling-puzzle-format.md): one TOML file per Puzzle in `puzzles/`, read in at compile time; file name is the Puzzle's identity; adds a reference Solution checked against the tests; no `null` values.
 - [Grilling: what a Run records and shows](issues/06-grilling-run-record.md): time, words per minute (Space/Enter straight after a character), Backspace presses and the passing Solution, appended to browser storage; personal bests and sharing not decided.
+- [Grilling: per-key mistakes and weak-key practice](issues/10-grilling-per-key-mistakes.md): each Run also stores its key presses with timings; "Most missed" (character typed after 1–2 Backspaces) and "Slowest" (median delay, gaps over 1.5 s ignored) lists below the editor, over the last 20 Runs; no Puzzle weighting yet.
 
 ## Not yet specified
 
-- Per-key / bigram error heatmap, and Puzzle selection weighted toward the player's weak keys (depends on what a Run records).
-- Puzzle authoring guidelines for coding agents (the TOML layout, name the file after the function, no `null`, a reference Solution), and the launch bank's size and topic coverage.
-- Hosting and deployment of the Obelisk app (frontend + serving-only Snap backend).
+- Choosing the next Puzzle with the player's weak keys in mind (deferred by issue 10); revisit once the launch bank's size and coverage are settled.
 - Sandbox gaps from issue 03, not built yet: the warm spare worker (each check starts a fresh one) and the CSP header that blocks the worker's network access.
 
 ## Out of scope

@@ -4,6 +4,14 @@ A typing-practice game for developers: instead of retyping shown text, the playe
 
 ## Language
 
+**Correction**:
+A character typed straight after one or two Backspaces, counted as a miss of that character: it is what the player was aiming for. Three or more Backspaces in a row is a rewrite, not a Correction.
+_Avoid_: Error, typo, mistake
+
+**Hesitation**:
+The time before a key press, measured from the previous one; gaps over 1.5 s are thinking, not Hesitation.
+_Avoid_: Latency, delay, reaction time
+
 **Puzzle**:
 A small programming problem shown to the player, paired with hidden tests that decide whether a Solution is correct.
 _Avoid_: Challenge, kata, exercise, problem
