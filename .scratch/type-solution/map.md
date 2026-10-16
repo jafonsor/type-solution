@@ -6,6 +6,19 @@ Label: wayfinder:map
 
 A handoff-ready MVP spec for Type Solution: a typing-practice web game where the player sees a Puzzle and races to type any JavaScript Solution that passes its hidden tests, checked live in the browser.
 
+## Design Contract
+
+Rules every spec and build decision must keep. Breaking one means stopping to ask.
+
+- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests and the Reference Solution are never shown.
+- **I2 — Practice comes first.** The game exists to practise a keyboard layout; code Puzzles are the wrapper. The editor gives syntax highlighting and auto-indent only: no auto-closing brackets, no suggestions or autocomplete, nothing that types for the player.
+- **I3 — One Puzzle per Run, ended by passing.** The clock runs from the first keystroke until the tests pass, minus Pauses. Tests re-run when typing pauses; the Run ends by itself on a pass, with no submit key. A Run given up from a Pause isn't recorded.
+- **I4 — No server.** The app is static files only; there is no server-side game logic, no accounts and no global leaderboards. Player code runs only in the player's browser, in a Web Worker that is stopped on a ~1 s timeout.
+- **I5 — Results stay in this browser.** Runs, their key presses, Personal bests and weak-key stats are kept in the player's own browser storage and never leave it.
+- **I6 — Puzzles are hand-made files.** Each Puzzle is a TOML file in the repo, read in when the app is built, with a Reference Solution that passes its tests. The app never calls an LLM and players can't author Puzzles.
+- **I7 — JavaScript only.** Solutions are JavaScript; no other language is offered.
+- **I8 — The chosen stack.** reflex-dom on Obelisk v2, compiled to WebAssembly, with CodeMirror 6 behind a thin JS shim and a plain-JS test-runner worker; built by GitHub Actions and served by GitHub Pages.
+
 ## Notes
 
 - Domain: see `CONTEXT.md` (Puzzle, Run, Solution).
