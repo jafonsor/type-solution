@@ -16,3 +16,7 @@ Static hosting on GitHub Pages; no server runs in production.
 - **Address.** `jafonsor.github.io/type-solution`, GitHub's free per-repo address. No custom domain for now; one can be added later without changing anything else.
 - **CSP.** GitHub Pages can't set response headers, so the network block goes in a `<meta>` tag, and the test worker starts from a blob URL so that it takes on the page's rules. If [Research: do blob workers inherit a meta-tag CSP?](14-research-blob-worker-csp.md) finds a major browser (Safari is the doubt) where it doesn't hold, ship without the network block: the only code that runs is what the player typed, in their own browser.
 - Rejected: a Linux server (VPS / Fly.io). It needs a Linux build and a box to keep up, for a backend with nothing to do. Cloudflare Pages in front of the branch would give real headers, but a second host isn't worth it for a nice-to-have block.
+
+## Comments
+
+- The CSP bullet above is superseded: no CSP ships and the worker keeps its file URL. See [Grilling: which CSP rules ship](15-grilling-csp-policy.md).

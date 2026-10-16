@@ -37,12 +37,13 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 
 - [Grilling: personal bests, the results screen and sharing](issues/11-grilling-bests-results-sharing.md): best = fastest time per Puzzle, shown on the status line after a pass; Esc pauses; a menu of two icon buttons (New random Puzzle, Repeat Puzzle) reached with Tab after a pass, a Pause, or a skip.
 - [Grilling: Puzzle authoring guide and the launch bank](issues/12-grilling-authoring-guide-launch-bank.md): a repo skill for agents; easy pure-function Puzzles, references 4–12 lines / 100–350 chars, prompt with one example and every tested edge case, 3–6 tests; bank-wide symbol coverage report; ~50 Puzzles across strings/arrays/numbers/objects, added in human-skimmed batches of ~10.
-- [Grilling: hosting and deployment](issues/13-grilling-hosting.md): no server; GitHub Actions builds each push to `main`, exports the static files and force-pushes them to a `gh-pages` branch served by GitHub Pages at `jafonsor.github.io/type-solution`; CSP via meta tag + blob worker, dropped if browsers don't honour it.
+- [Grilling: hosting and deployment](issues/13-grilling-hosting.md): no server; GitHub Actions builds each push to `main`, exports the static files and force-pushes them to a `gh-pages` branch served by GitHub Pages at `jafonsor.github.io/type-solution`; CSP via meta tag + blob worker (later dropped: see which CSP rules ship).
 - [Research: do blob workers inherit a meta-tag CSP?](issues/14-research-blob-worker-csp.md): yes in Chrome (tested) and Firefox (WPT); Safari yes per WebKit source but untested. The page can't use `connect-src 'none'` because it fetches its own wasm; three candidate policies; the test worker must change from a file URL to a blob.
+- [Grilling: which CSP rules ship](issues/15-grilling-csp-policy.md): none; no meta tag, the worker keeps its file URL and its ~1 s timeout. Supersedes the CSP part of hosting.
 
 ## Not yet specified
 
-- Sandbox gaps from [Research: sandboxing player JavaScript in the browser](issues/03-research-js-sandbox.md), not built yet: the warm spare worker (each check starts a fresh one) and the network block. The block is now a meta-tag CSP plus a blob worker; which rules ship is [Grilling: which CSP rules ship](issues/15-grilling-csp-policy.md).
+Nothing. (The warm spare worker from [Research: sandboxing player JavaScript in the browser](issues/03-research-js-sandbox.md) is decided, just not built.)
 
 ## Out of scope
 
@@ -52,3 +53,4 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - Multi-Puzzle Runs and daily seeded sets.
 - Share-as-text of a Run's result: anonymous solo practice, so a shared time compares to nothing ([Grilling: personal bests, the results screen and sharing](issues/11-grilling-bests-results-sharing.md)).
 - Choosing the next Puzzle with the player's weak keys in mind: random choice ships; with ~50 Puzzles and 20-Run stats the data is too thin to weight by, so it's a later effort ([Grilling: Puzzle authoring guide and the launch bank](issues/12-grilling-authoring-guide-launch-bank.md)).
+- Blocking a Solution's network access (CSP): the code runs only in the player's own browser, so it may do whatever its author wrote ([Grilling: which CSP rules ship](issues/15-grilling-csp-policy.md)).
