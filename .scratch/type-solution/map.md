@@ -36,10 +36,10 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - [Grilling: per-key mistakes and weak-key practice](issues/10-grilling-per-key-mistakes.md): each Run also stores its key presses with timings; "Most missed" (character typed after 1–2 Backspaces) and "Slowest" (median delay, gaps over 1.5 s ignored) lists below the editor, over the last 20 Runs; no Puzzle weighting yet.
 
 - [Grilling: personal bests, the results screen and sharing](issues/11-grilling-bests-results-sharing.md): best = fastest time per Puzzle, shown on the status line after a pass; Esc pauses; a menu of two icon buttons (New random Puzzle, Repeat Puzzle) reached with Tab after a pass, a Pause, or a skip.
+- [Grilling: Puzzle authoring guide and the launch bank](issues/12-grilling-authoring-guide-launch-bank.md): a repo skill for agents; easy pure-function Puzzles, references 4–12 lines / 100–350 chars, prompt with one example and every tested edge case, 3–6 tests; bank-wide symbol coverage report; ~50 Puzzles across strings/arrays/numbers/objects, added in human-skimmed batches of ~10.
 
 ## Not yet specified
 
-- Choosing the next Puzzle with the player's weak keys in mind (deferred by issue 10); revisit once the launch bank's size and coverage are settled.
 - Sandbox gaps from issue 03, not built yet: the warm spare worker (each check starts a fresh one) and the CSP header that blocks the worker's network access.
 
 ## Out of scope
@@ -49,3 +49,4 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - Runtime LLM generation of Puzzles; player-authored Puzzles.
 - Multi-Puzzle Runs and daily seeded sets.
 - Share-as-text of a Run's result: anonymous solo practice, so a shared time compares to nothing ([Grilling: personal bests, the results screen and sharing](issues/11-grilling-bests-results-sharing.md)).
+- Choosing the next Puzzle with the player's weak keys in mind: random choice ships; with ~50 Puzzles and 20-Run stats the data is too thin to weight by, so it's a later effort ([Grilling: Puzzle authoring guide and the launch bank](issues/12-grilling-authoring-guide-launch-bank.md)).
