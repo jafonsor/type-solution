@@ -14,10 +14,10 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - Settled while charting:
   - Player sees only the Puzzle and types any working Solution (not a drill of shown code).
   - Audience: developers practising; public web toy, anonymous play.
-  - One Puzzle per Run. Clock runs first keystroke → tests pass; Esc gives up (not recorded).
-  - Tests re-run on typing pause; auto-advance on pass. No submit key.
-  - Headline score is raw time; also show words per minute and backspace count (see 06). Personal bests in the browser.
-  - Next Puzzle: random, one-key restart/next. No difficulty filter.
+  - One Puzzle per Run. Clock runs first keystroke → tests pass, minus Pauses; Esc pauses (see 11).
+  - Tests re-run on typing pause; the Run ends by itself on pass (no submit key), then waits on a menu (see 11).
+  - Headline score is raw time; also show words per minute and backspace count (see 06). Personal bests in the browser (see 11).
+  - Next Puzzle: random, chosen from the menu (New random Puzzle / Repeat Puzzle). No difficulty filter.
   - Editor: syntax highlighting + auto-indent; no auto-closing brackets; no suggestions (see 04).
   - JavaScript only. Player code runs in-browser (Web Worker + timeout); no server-side game logic.
   - Puzzles are hand-authored config files in the repo, written by coding agents; the app never calls an LLM.
@@ -35,6 +35,8 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - [Grilling: what a Run records and shows](issues/06-grilling-run-record.md): time, words per minute (Space/Enter straight after a character), Backspace presses and the passing Solution, appended to browser storage; personal bests and sharing not decided.
 - [Grilling: per-key mistakes and weak-key practice](issues/10-grilling-per-key-mistakes.md): each Run also stores its key presses with timings; "Most missed" (character typed after 1–2 Backspaces) and "Slowest" (median delay, gaps over 1.5 s ignored) lists below the editor, over the last 20 Runs; no Puzzle weighting yet.
 
+- [Grilling: personal bests, the results screen and sharing](issues/11-grilling-bests-results-sharing.md): best = fastest time per Puzzle, shown on the status line after a pass; Esc pauses; a menu of two icon buttons (New random Puzzle, Repeat Puzzle) reached with Tab after a pass, a Pause, or a skip.
+
 ## Not yet specified
 
 - Choosing the next Puzzle with the player's weak keys in mind (deferred by issue 10); revisit once the launch bank's size and coverage are settled.
@@ -46,3 +48,4 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 - Languages other than JavaScript.
 - Runtime LLM generation of Puzzles; player-authored Puzzles.
 - Multi-Puzzle Runs and daily seeded sets.
+- Share-as-text of a Run's result: anonymous solo practice, so a shared time compares to nothing ([Grilling: personal bests, the results screen and sharing](issues/11-grilling-bests-results-sharing.md)).

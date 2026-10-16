@@ -12,6 +12,14 @@ _Avoid_: Error, typo, mistake
 The time before a key press, measured from the previous one; gaps over 1.5 s are thinking, not Hesitation.
 _Avoid_: Latency, delay, reaction time
 
+**Pause**:
+A stop in a Run, started and ended by the player; paused time doesn't count toward the Run's time or Words per minute.
+_Avoid_: Break, hold
+
+**Personal best**:
+The fastest passed Run on a Puzzle, in this browser.
+_Avoid_: High score, record, PB
+
 **Puzzle**:
 A small programming problem shown to the player, paired with hidden tests that decide whether a Solution is correct.
 _Avoid_: Challenge, kata, exercise, problem
@@ -21,7 +29,7 @@ A working Solution written alongside a Puzzle, never shown to the player, that p
 _Avoid_: Answer key, model answer
 
 **Run**:
-One timed attempt at a single Puzzle, from the first keystroke until the Solution passes.
+One timed attempt at a single Puzzle, from the first keystroke until the Solution passes, not counting Pauses. A Run given up from a Pause isn't recorded.
 _Avoid_: Session, game, round, heat
 
 **Solution**:
