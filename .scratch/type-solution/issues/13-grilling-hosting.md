@@ -1,7 +1,7 @@
 # Grilling: hosting and deployment
 
 Type: grilling
-Status: open
+Status: claimed
 
 ## Question
 
