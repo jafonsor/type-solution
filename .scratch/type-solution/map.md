@@ -10,7 +10,7 @@ A handoff-ready MVP spec for Type Solution: a typing-practice web game where the
 
 Rules every spec and build decision must keep. Breaking one means stopping to ask.
 
-- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests and the Reference Solution are never shown.
+- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests' code and the Reference Solution are never shown; a failed test may show its call, its expected value and what the Solution returned.
 - **I2 — Practice comes first.** The game exists to practise a keyboard layout; code Puzzles are the wrapper. The editor gives syntax highlighting and auto-indent only: no auto-closing brackets, no suggestions or autocomplete, nothing that types for the player.
 - **I3 — One Puzzle per Run, ended by passing.** The clock runs from the first keystroke until the tests pass, minus Pauses. Tests re-run when typing pauses; the Run ends by itself on a pass, with no submit key. A Run given up from a Pause isn't recorded.
 - **I4 — No server.** The app is static files only; there is no server-side game logic, no accounts and no global leaderboards. Player code runs only in the player's browser, in a Web Worker that is stopped on a ~1 s timeout.
