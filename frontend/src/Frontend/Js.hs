@@ -6,6 +6,11 @@ module Frontend.Js
   ( Editor
   , createEditor
   , setDoc
+  , setReadOnly
+  , focusEditor
+  , focusElement
+  , setHidden
+  , random
   , syntaxError
   , saveRun
   , Checker
@@ -26,8 +31,8 @@ import Common.Run (Key (..))
 newtype Editor = Editor JSVal
 
 -- | Mount an editor in the element. The callbacks get the whole document on
--- every change the player makes, the Escape key, and each key press a Run
--- counts.
+-- every change the player makes, the Escape key (pressed anywhere on the
+-- page), and each key press a Run counts.
 createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Key -> JSM ()) -> JSM Editor
 createEditor parent onChange onEscape onKey = do
   changed <- function \_ _ args -> forM_ (take 1 args) \a ->
@@ -44,9 +49,25 @@ createEditor parent onChange onEscape onKey = do
 
 -- | Replace the document, without calling the change callback.
 setDoc :: Editor -> Text -> JSM ()
-setDoc (Editor e) t = do
-  void $ e # ("setDoc" :: Text) $ [t]
-  void $ e # ("focus" :: Text) $ ()
+setDoc (Editor e) t = void $ e # ("setDoc" :: Text) $ [t]
+
+-- | Read-only: the editor takes no typing and Tab moves the focus on.
+setReadOnly :: Editor -> Bool -> JSM ()
+setReadOnly (Editor e) b = void $ e # ("setReadOnly" :: Text) $ [b]
+
+focusEditor :: Editor -> JSM ()
+focusEditor (Editor e) = void $ e # ("focus" :: Text) $ ()
+
+focusElement :: Element -> JSM ()
+focusElement el = void $ jsg ("TypeSolution" :: Text) # ("focus" :: Text) $ [unElement el]
+
+-- | Hide the element, or show it again.
+setHidden :: Element -> Bool -> JSM ()
+setHidden el b = void $ unElement el # ("toggleAttribute" :: Text) $ (("hidden" :: Text), b)
+
+-- | A random number in [0, 1), from the browser.
+random :: JSM Double
+random = (jsg ("TypeSolution" :: Text) # ("random" :: Text) $ ()) >>= fromJSValUnchecked
 
 -- | The JavaScript parser's message if the code doesn't parse.
 syntaxError :: Text -> JSM (Maybe Text)

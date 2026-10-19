@@ -9,10 +9,12 @@
 module Common.Bank
   ( bank
   , lookupPuzzle
+  , randomPuzzle
   ) where
 
 import Data.List (find)
 import Data.List.NonEmpty (NonEmpty)
+import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 
 import Common.Puzzle
@@ -24,3 +26,8 @@ bank = $(embedBank)
 -- | The Puzzle with this identity, if the bank has one.
 lookupPuzzle :: Text -> Maybe Puzzle
 lookupPuzzle i = find ((== i) . (.identity)) bank
+
+-- | The Puzzle a random number in [0, 1) picks, each as likely as any other:
+-- 'Math.random' in the browser gives the number.
+randomPuzzle :: Double -> Puzzle
+randomPuzzle x = bank NonEmpty.!! max 0 (min (length bank - 1) (floor (x * fromIntegral (length bank))))

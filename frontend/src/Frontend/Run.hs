@@ -1,8 +1,8 @@
 {-# LANGUAGE NoOverloadedLists #-}
--- | One Run in the browser: the Puzzle, the editor, and the checks that run
--- the Solution against the Puzzle's tests whenever the player pauses. The
--- Run's logic is 'Common.Run'; this module turns the page's events into its
--- events and draws the result.
+-- | The Runs in the browser: the Puzzle, the editor, the checks that run the
+-- Solution against the Puzzle's tests whenever the player stops typing, and
+-- the menu that starts the next Run. The Run's logic is 'Common.Run'; this
+-- module turns the page's events into its events and draws the result.
 module Frontend.Run
   ( runWidget
   ) where
@@ -11,19 +11,19 @@ import Control.Monad (forM_)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (liftIO)
 import Data.Text (Text)
-import Data.Text qualified as T
 import Data.Time (NominalDiffTime, getCurrentTime)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
-import Numeric (showFFloat)
 import Reflex.Dom.Core
 
+import Common.Bank (randomPuzzle)
 import Common.Puzzle
-import Common.Run
+import Common.Run hiding (Event)
+import Common.Status
 import Frontend.Js
 
--- | How long typing must pause before the Solution is checked.
-pauseBeforeCheck :: NominalDiffTime
-pauseBeforeCheck = 0.4
+-- | How long typing must stop before the Solution is checked.
+quietBeforeCheck :: NominalDiffTime
+quietBeforeCheck = 0.4
 
 -- | How long a check may run before it counts as a timeout.
 checkTimeout :: NominalDiffTime
@@ -42,12 +42,15 @@ runWidget
      )
   => Text
      -- ^ URL of the test-runner worker script.
-  -> Puzzle
   -> m ()
-runWidget workerUrl puzzle = mdo
+runWidget workerUrl = mdo
+  -- The first Puzzle is picked here, in the browser, so each visit differs.
+  firstPuzzle <- liftJSM (randomPuzzle <$> random)
+  dPuzzle <- holdDyn firstPuzzle ePuzzle
+
   elClass "header" "puzzle" do
-    elClass "h1" "signature" $ text puzzle.signature
-    elClass "p" "prompt" $ text puzzle.prompt
+    elClass "h1" "signature" $ dynText ((.signature) <$> dPuzzle)
+    elClass "p" "prompt" $ dynText ((.prompt) <$> dPuzzle)
 
   (box, _) <- elClass' "div" "editor" blank
   (eCode, fireCode) <- newTriggerEvent
@@ -57,19 +60,28 @@ runWidget workerUrl puzzle = mdo
   editor <- liftJSM $ createEditor (_element_raw box)
     (liftIO . fireCode) (liftIO (fireEscape ())) (liftIO . fireKey)
   checker <- newChecker
+  -- The editor is built before it's on the page, so it's focused once it
+  -- is: the player can start typing straight away.
+  eBuilt <- delay 0 =<< getPostBuild
+  performEvent_ (liftJSM (focusEditor editor) <$ eBuilt)
 
-  let notPassed = (/= Passed) . (.phase) <$> current dRun
+  -- The editor is read-only while the menu is open, so edits come only
+  -- while it's closed; the Run would ignore any others anyway.
+  let eTyped = gate (not . menuOpen <$> current dRun) eCode
+      -- Checks are for a Run under way, paused or not.
+      underWay r = r.phase `notElem` [NotStarted, Skipped, Passed]
 
-  -- Every edit stops the check in flight; a pause starts a new one.
-  eEdited <- performEvent $ ffor (gate notPassed eCode) \src -> do
+  -- Every edit stops the check in flight; a pause in typing starts a new one.
+  eEdited <- performEvent $ ffor eTyped \src -> do
     liftJSM (stopCheck checker)
     t <- liftIO getCurrentTime
     pure [Edited t src]
-  ePause <- debounce pauseBeforeCheck (gate notPassed eCode)
-  eCheck <- zipListWithEvent (,) [1 :: Int ..] ePause
+  eQuiet <- debounce quietBeforeCheck eTyped
+  eCheck <- zipListWithEvent (,) [1 :: Int ..] $
+    attachWith (,) (current dPuzzle) (gate (underWay <$> current dRun) eQuiet)
 
   -- Code that doesn't parse fails at once; the rest goes to a worker.
-  eStarted <- performEvent $ ffor eCheck \(n, src) -> liftJSM do
+  eStarted <- performEvent $ ffor eCheck \(n, (puzzle, src)) -> liftJSM do
     syntaxError src >>= \case
       Just msg -> do
         t <- liftIO getCurrentTime
@@ -95,20 +107,28 @@ runWidget workerUrl puzzle = mdo
     t <- liftIO getCurrentTime
     pure [CheckFinished t n TimedOut]
 
-  -- Escape starts the Run over.
-  eRestarted <- performEvent $ ffor eEscape \_ -> liftJSM do
+  -- Esc skips, pauses or carries on; the Run decides which. A check in
+  -- flight keeps running: its outcome still counts.
+  eEscaped <- performEvent $ ffor eEscape \_ -> do
+    t <- liftIO getCurrentTime
+    pure [Escaped t]
+
+  -- Either menu button starts a new Run with an empty editor.
+  ePuzzle <- performEvent $ ffor (attach (current dPuzzle) eChoice) \(p, choice) -> liftJSM do
     stopCheck checker
     setDoc editor ""
-    pure [Restarted]
+    case choice of
+      Repeat -> pure p
+      NewRandom -> randomPuzzle <$> random
 
   dRun <- foldDyn (\es r -> foldl (flip step) r es) newRun $ mergeWith (<>)
-    [ eEdited, (\(_, _, es) -> es) <$> eStarted, eFinished, eTimedOut, eRestarted
-    , (\k -> [Pressed k]) <$> eKey ]
+    [ eEdited, (\(_, _, es) -> es) <$> eStarted, eFinished, eTimedOut, eEscaped
+    , [NewRunStarted] <$ ePuzzle, (\k -> [Pressed k]) <$> eKey ]
 
-  -- A Run that has just passed is kept in the browser.
+  -- A Run that has just passed is kept in the browser; one given up isn't.
   let eRecord = attachWithMaybe
-        (\old new -> if old.phase /= Passed then runRecord puzzle new else Nothing)
-        (current dRun) (updated dRun)
+        (\(p, old) new -> recordOnStep p old new)
+        ((,) <$> current dPuzzle <*> current dRun) (updated dRun)
   performEvent_ $ liftJSM . saveRun . recordText <$> eRecord
 
   -- The clock, ticking while the Run is under way.
@@ -118,29 +138,64 @@ runWidget workerUrl puzzle = mdo
   let dElapsed = zipDynWith elapsed dNow dRun
 
   elClass "div" "status" do
-    elClass "span" "clock" $ dynText (seconds <$> dElapsed)
-    elClass "span" "phase" $ dynText (statusText puzzle <$> dRun <*> dElapsed)
+    elClass "span" "clock" $ dynText (secondsText <$> dElapsed)
+    elClass "span" "phase" $ dynText (statusText <$> dRun)
 
-  elClass "div" "feedback" $ dyn_ (feedback puzzle <$> dRun)
+  (eChoice, firstButton, menuBox) <- menu
 
-statusText :: Puzzle -> Run -> NominalDiffTime -> Text
-statusText puzzle r t = case r.phase of
-  NotStarted -> "Start typing: the clock starts on your first keystroke."
-  Typing -> ""
-  Checking -> "checking…"
-  Checked -> case r.outcome of
-    Just (Results rs) -> tshow (length (filter (.passed) rs)) <> "/" <> tshow (length rs) <> " tests pass"
-    Just (SyntaxError _) -> "doesn't parse yet"
-    Just (Crashed _) -> "crashed"
-    Just TimedOut -> "timed out"
-    Nothing -> ""
-  Passed -> case runRecord puzzle r of
-    Just rr -> "Passed in " <> seconds t <> ", " <> tshow (round rr.wpm :: Int) <> " wpm, "
-      <> plural rr.backspaces "backspace" <> ". Press Esc for another Run."
-    Nothing -> "Passed in " <> seconds t <> ". Press Esc for another Run."
+  -- Opening the menu freezes the editor and focuses the first button;
+  -- closing it hands the focus back to the editor.
+  dMenuOpen <- holdUniqDyn (menuOpen <$> dRun)
+  performEvent_ $ ffor (updated dMenuOpen) \open -> liftJSM do
+    setHidden menuBox (not open)
+    setReadOnly editor open
+    if open then focusElement firstButton else focusEditor editor
+
+  elClass "div" "feedback" $ dyn_ (feedback <$> dPuzzle <*> dRun)
+
+data Choice = NewRandom | Repeat
+
+-- | The menu's two buttons, hidden until the Run opens it.
+menu
+  :: (DomBuilder t m, DomBuilderSpace m ~ GhcjsDomSpace, PostBuild t m)
+  => m (Event t Choice, RawElement GhcjsDomSpace, RawElement GhcjsDomSpace)
+menu = do
+  (box, (eNew, newEl, eRepeat)) <- elAttr' "div" ("class" =: "menu" <> "hidden" =: "") do
+    (n, _) <- iconButton "New random Puzzle" skipNextIcon
+    (r, _) <- iconButton "Repeat Puzzle" repeatIcon
+    pure (domEvent Click n, _element_raw n, domEvent Click r)
+  pure (leftmost [NewRandom <$ eNew, Repeat <$ eRepeat], newEl, _element_raw box)
+  where
+    iconButton name = elAttr' "button"
+      ("type" =: "button" <> "title" =: name <> "aria-label" =: name)
+
+-- | "Skip next": a play triangle against a bar.
+skipNextIcon :: (DomBuilder t m, PostBuild t m) => m ()
+skipNextIcon = icon do
+  svg "path" [("d", "M6 5.5 L15 12 L6 18.5 Z"), ("fill", "currentColor")]
+  svg "rect" [("x", "16"), ("y", "5.5"), ("width", "2.5"), ("height", "13"), ("fill", "currentColor")]
+
+-- | "Repeat": a circle of arrow going round.
+repeatIcon :: (DomBuilder t m, PostBuild t m) => m ()
+repeatIcon = icon do
+  let stroke = [ ("fill", "none"), ("stroke", "currentColor"), ("stroke-width", "2")
+               , ("stroke-linecap", "round"), ("stroke-linejoin", "round") ]
+  svg "path" (("d", "M19 12 A7 7 0 1 1 16.95 7.05") : stroke)
+  svg "path" (("d", "M12.95 7.05 H16.95 V3.05") : stroke)
+
+icon :: (DomBuilder t m, PostBuild t m) => m () -> m ()
+icon = elDynAttrNS (Just svgNS) "svg" (constDyn
+  ("viewBox" =: "0 0 24 24" <> "width" =: "20" <> "height" =: "20" <> "aria-hidden" =: "true"))
+
+svg :: (DomBuilder t m, PostBuild t m) => Text -> [(Text, Text)] -> m ()
+svg name attrs = elDynAttrNS (Just svgNS) name (constDyn (foldMap (uncurry (=:)) attrs)) blank
+
+svgNS :: Text
+svgNS = "http://www.w3.org/2000/svg"
 
 -- | Why the last check failed: each failed test with what the Solution
--- returned, or the error that stopped the tests from running.
+-- returned, or the error that stopped the tests from running. Shown during
+-- a Pause too, as a check may finish then.
 feedback :: DomBuilder t m => Puzzle -> Run -> m ()
 feedback puzzle r = case r.outcome of
   _ | r.phase == Passed -> blank
@@ -154,14 +209,5 @@ feedback puzzle r = case r.outcome of
   Just (SyntaxError msg) -> elClass "div" "failure" $ text ("Syntax error: " <> msg)
   Just (Crashed msg) -> elClass "div" "failure" $ text msg
   Just TimedOut -> elClass "div" "failure" $
-    text ("Stopped after " <> seconds checkTimeout <> ": an infinite loop?")
+    text ("Stopped after " <> secondsText checkTimeout <> ": an infinite loop?")
   Nothing -> blank
-
-seconds :: NominalDiffTime -> Text
-seconds t = T.pack (showFFloat (Just 1) (realToFrac t :: Double) "") <> " s"
-
-plural :: Int -> Text -> Text
-plural n w = tshow n <> " " <> w <> (if n == 1 then "" else "s")
-
-tshow :: Show a => a -> Text
-tshow = T.pack . show

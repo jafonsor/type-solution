@@ -7,6 +7,7 @@ import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString.Lazy qualified as LBS
 import Data.Either (isLeft)
 import Data.List (isInfixOf, sort)
+import Data.Maybe (mapMaybe)
 import Data.List.NonEmpty qualified as NonEmpty
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -20,6 +21,7 @@ import Test.HUnit
 import Common.Bank
 import Common.Puzzle
 import Common.Run
+import Common.Status
 
 main :: IO ()
 main = do
@@ -34,6 +36,16 @@ at s = addUTCTime (realToFrac s) t0
 
 run :: [Event] -> Run
 run = foldl (flip step) newRun
+
+-- | Every record the Runs leave behind, as the page keeps them: one for each
+-- step that passed a Run.
+records :: [Event] -> [RunRecord]
+records es = mapMaybe (uncurry (recordOnStep fizzBuzz)) (zip runs (drop 1 runs))
+  where runs = scanl (flip step) newRun es
+
+-- | A Run under way: started at 1 s, with "x" typed.
+typing :: [Event]
+typing = [Pressed Character, Edited (at 1) "x"]
 
 pass, failWith :: TestResult
 pass = TestResult { passed = True, got = "\"x\"" }
@@ -134,13 +146,153 @@ suite = TestList
       r.phase @?= Passed
       elapsed (at 9) r @?= 1
 
-  , "restarting gives a new Run" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 allPass, Restarted]
+  , "a new Run after a pass starts from scratch" ~: do
+      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 allPass, NewRunStarted]
       r @?= newRun
 
-  , "an outcome arriving after a restart is ignored" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, Restarted, CheckFinished (at 2) 1 allPass]
+  , "an outcome arriving after a new Run started is ignored" ~: do
+      let r = run [Edited (at 1) "", CheckStarted 1, Escaped (at 1.5), NewRunStarted, CheckFinished (at 2) 1 allPass]
       r @?= newRun
+
+  , "a check left over from a dropped Run doesn't start the new one" ~: do
+      let r = run [Edited (at 1) "", Escaped (at 1.2), NewRunStarted, CheckStarted 1]
+      r @?= newRun
+
+  -- Esc
+
+  , "Esc before the first keystroke skips the Puzzle" ~: do
+      let r = run [Escaped (at 1)]
+      r.phase @?= Skipped
+      statusText r @?= "Skipped."
+      elapsed (at 5) r @?= 0
+
+  , "after a skip, Esc and typing do nothing" ~: do
+      let r = run [Escaped (at 1), Escaped (at 2), Pressed Character, Edited (at 3) "x", CheckStarted 1]
+      r @?= run [Escaped (at 1)]
+
+  , "Esc while typing pauses the Run and stops the clock" ~: do
+      let r = run (typing <> [Escaped (at 4)])
+      r.phase @?= Paused
+      statusText r @?= "Paused. Esc to carry on."
+      elapsed (at 4) r @?= 3
+      elapsed (at 60) r @?= 3
+
+  , "Esc while a check runs pauses the Run" ~: do
+      let r = run (typing <> [CheckStarted 1, Escaped (at 2)])
+      r.phase @?= Paused
+
+  , "Esc after a failed check pauses the Run and keeps the feedback" ~: do
+      let o = Results [failWith]
+          r = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o, Escaped (at 3)])
+      r.phase @?= Paused
+      r.outcome @?= Just o
+
+  , "Esc while paused carries on where the Run was, the clock going on from the same time" ~: do
+      let r = run (typing <> [Escaped (at 4), Escaped (at 10)])
+      r.phase @?= Typing
+      elapsed (at 10) r @?= 3
+      elapsed (at 12) r @?= 5
+      let c = run (typing <> [CheckStarted 1, Escaped (at 2), Escaped (at 3)])
+      c.phase @?= Checking
+      let o = SyntaxError "Unexpected token"
+          f = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o, Escaped (at 3), Escaped (at 4)])
+      (f.phase, statusText f) @?= (Checked, "doesn't parse yet")
+
+  , "edits and key presses are ignored while paused" ~: do
+      let paused = run (typing <> [Escaped (at 4)])
+          r = run (typing <> [Escaped (at 4), Pressed Character, Pressed Space, Edited (at 5) "xy"])
+      r @?= paused
+      r.code @?= "x"
+
+  , "Esc after a pass does nothing" ~: do
+      let done = run (typing <> [CheckStarted 1, CheckFinished (at 3) 1 allPass])
+          r = run (typing <> [CheckStarted 1, CheckFinished (at 3) 1 allPass, Escaped (at 4)])
+      r @?= done
+
+  , "paused time is left out of the Run's time and words per minute" ~: do
+      let keys5 = concat (replicate 5 [Pressed Character, Pressed Space])
+          r = run ( [Edited (at 0) "f"] <> keys5
+                  <> [Escaped (at 10), Escaped (at 25), Escaped (at 30), Escaped (at 40)]
+                  <> [CheckStarted 1, CheckFinished (at 45) 1 allPass] )
+      -- 45 s on the clock, 15 + 10 of them paused.
+      elapsed (at 99) r @?= 20
+      wordsPerMinute r @?= Just 15
+      fmap (\rr -> (rr.duration, rr.wpm)) (runRecord fizzBuzz r) @?= Just (20, 15)
+      statusText r @?= "Passed in 20.0 s, 15 wpm, 0 backspaces."
+
+  , "a check passing during a Pause ends the Run when the Pause began" ~: do
+      let r = run (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 allPass])
+      r.phase @?= Passed
+      r.finishedAt @?= Just (at 3)
+      elapsed (at 99) r @?= 2
+      map (.duration) (records (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 allPass])) @?= [2]
+
+  , "after an earlier Pause, a pass during a Pause still leaves out all paused time" ~: do
+      let r = run (typing <> [Escaped (at 2), Escaped (at 7), CheckStarted 1, Escaped (at 8), CheckFinished (at 9) 1 allPass])
+      elapsed (at 99) r @?= 2
+
+  , "a check failing during a Pause shows its feedback and stays paused" ~: do
+      let o = Results [pass, failWith]
+          r = run (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 o])
+      r.phase @?= Paused
+      r.outcome @?= Just o
+      statusText r @?= "Paused. Esc to carry on."
+      let resumed = step (Escaped (at 4)) r
+      (resumed.phase, statusText resumed) @?= (Checked, "1/2 tests pass")
+
+  , "a check that starts during a Pause counts too" ~: do
+      let r = run (typing <> [Escaped (at 2), CheckStarted 1, CheckFinished (at 2.5) 1 allPass])
+      (r.phase, r.finishedAt) @?= (Passed, Just (at 2))
+
+  , "the menu is open exactly after a pass, during a Pause and after a skip" ~: do
+      let toPass = typing <> [CheckStarted 1, CheckFinished (at 2) 1 allPass]
+          phases :: [(Phase, Bool)]
+          phases =
+            [ (newRun.phase, menuOpen newRun)
+            , let r = run typing in (r.phase, menuOpen r)
+            , let r = run (typing <> [CheckStarted 1]) in (r.phase, menuOpen r)
+            , let r = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 TimedOut]) in (r.phase, menuOpen r)
+            , let r = run (typing <> [Escaped (at 2)]) in (r.phase, menuOpen r)
+            , let r = run [Escaped (at 1)] in (r.phase, menuOpen r)
+            , let r = run toPass in (r.phase, menuOpen r)
+            , let r = run (toPass <> [NewRunStarted]) in (r.phase, menuOpen r)
+            ]
+      phases @?=
+        [ (NotStarted, False), (Typing, False), (Checking, False), (Checked, False)
+        , (Paused, True), (Skipped, True), (Passed, True), (NotStarted, False) ]
+
+  , "a Run given up from a Pause leaves no record" ~: do
+      let es = typing <> [Pressed Space, CheckStarted 1, Escaped (at 3), NewRunStarted, CheckFinished (at 3.5) 1 allPass]
+      records es @?= []
+      run es @?= newRun
+
+  , "a passed Run leaves exactly one record, and a new Run after it none" ~: do
+      let es = typing <> [CheckStarted 1, CheckFinished (at 3) 1 allPass, Escaped (at 4), NewRunStarted]
+      map (.duration) (records es) @?= [2]
+
+  -- The status line
+
+  , "the status line says what the Run is doing" ~: do
+      statusText newRun @?= "Start typing: the clock starts on your first keystroke."
+      statusText (run typing) @?= ""
+      statusText (run (typing <> [CheckStarted 1])) @?= "checking…"
+      let after o = statusText (run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o]))
+      after (Results [pass, failWith, failWith]) @?= "1/3 tests pass"
+      after (SyntaxError "x") @?= "doesn't parse yet"
+      after (Crashed "x") @?= "crashed"
+      after TimedOut @?= "timed out"
+
+  , "the pass line gives the time, words per minute and backspaces, and no Esc hint" ~: do
+      let r = run [ Edited (at 0) "f", Pressed Character, Pressed Space, Pressed Backspace
+                  , CheckStarted 1, CheckFinished (at 12.34) 1 allPass ]
+      statusText r @?= "Passed in 12.3 s, 5 wpm, 1 backspace."
+      let r2 = run [ Edited (at 0) "f", Pressed Backspace, Pressed Backspace, CheckStarted 1, CheckFinished (at 6) 1 allPass ]
+      statusText r2 @?= "Passed in 6.0 s, 0 wpm, 2 backspaces."
+
+  , "times read in seconds to a tenth" ~: do
+      secondsText 0 @?= "0.0 s"
+      secondsText 1 @?= "1.0 s"
+      secondsText 75.25 @?= "75.2 s"
 
   , "a space or Enter straight after a character ends a word" ~: do
       let r = run (map Pressed [Character, Space, Space, Character, Character, Enter, Enter, Character])
@@ -159,8 +311,8 @@ suite = TestList
                   , Pressed Space, Pressed Backspace ]
       (r.wordsTyped, r.backspaces) @?= (0, 0)
 
-  , "restarting clears the counts" ~: do
-      let r = run [Pressed Character, Pressed Space, Pressed Backspace, Restarted]
+  , "a new Run clears the counts" ~: do
+      let r = run [Pressed Character, Edited (at 1) "x", Pressed Space, Pressed Backspace, Escaped (at 2), NewRunStarted]
       r @?= newRun
 
   , "a passed Run's record has its time, words per minute, backspaces and Solution" ~: do
@@ -204,6 +356,13 @@ suite = TestList
 
   , "the bank's fizzBuzz is the fizzBuzz Puzzle the game has always played" ~: do
       lookupPuzzle "fizzBuzz" @?= Just fizzBuzz
+
+  , "a random number picks any Puzzle in the bank, each equally likely" ~: do
+      let n = length bank
+          picks = [randomPuzzle ((fromIntegral i + 0.5) / fromIntegral n) | i <- [0 .. n - 1]]
+      map (.identity) picks @?= map (.identity) (NonEmpty.toList bank)
+      (randomPuzzle 0).identity @?= (NonEmpty.head bank).identity
+      (randomPuzzle 0.999999).identity @?= (NonEmpty.last bank).identity
 
   , "the bank is sorted by identity, with no identity twice" ~: do
       let ids = map (.identity) (NonEmpty.toList bank)

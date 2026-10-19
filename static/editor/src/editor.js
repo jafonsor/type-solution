@@ -8,12 +8,17 @@
 //   const editor = TypeSolution.createEditor(parent, onChange, onEscape, onKey);
 //     // onKey gets "character", "space", "enter" or "backspace" for each
 //     // such key press the player makes; other keys aren't reported.
+//     // onEscape gets every Esc on the page, wherever the focus is (the
+//     // menu's buttons included), so it works while the editor is read-only.
 //   editor.setDoc(text);   // replace the document without calling onChange
+//   editor.setReadOnly(b); // true: no typing and Tab moves focus; false: back
 //   editor.focus();
+//   TypeSolution.focus(element)     // focus a page element, e.g. a button
+//   TypeSolution.random()           // Math.random(), a number in [0, 1)
 //   TypeSolution.syntaxError(code)  // null, or the parser's message
 //   TypeSolution.saveRun(json)      // append a finished Run to browser storage
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
-import { EditorState, Prec } from "@codemirror/state";
+import { EditorState, Prec, Compartment } from "@codemirror/state";
 import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { javascript } from "@codemirror/lang-javascript";
@@ -54,8 +59,26 @@ function keyKind(e) {
   return null;
 }
 
+// Typing, and Tab indenting, only while the editor is editable. Read-only,
+// the editor takes no input and leaves Tab to the browser, so focus can move
+// to the menu's buttons.
+function editing(on) {
+  return on
+    ? [keymap.of([indentWithTab])]
+    : [EditorState.readOnly.of(true), EditorView.editable.of(false)];
+}
+
 function createEditor(parent, onChange, onEscape, onKey) {
   let programmatic = false;
+  const mode = new Compartment();
+  // Esc is caught for the whole page, before the editor sees it: once the
+  // menu is open the focus is on its buttons, not in the editor.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !e.isComposing) {
+      e.preventDefault();
+      onEscape();
+    }
+  }, true);
   const view = new EditorView({
     parent,
     state: EditorState.create({
@@ -63,13 +86,12 @@ function createEditor(parent, onChange, onEscape, onKey) {
       extensions: [
         lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
         theme, syntaxHighlighting(highlight), javascript(),
-        keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
+        keymap.of([...defaultKeymap, ...historyKeymap]),
+        mode.of(editing(true)),
         Prec.highest(EditorView.domEventHandlers({
           keydown(e) {
-            if (e.key === "Escape") {
-              onEscape();
-              return true;
-            }
+            // Esc belongs to the page's listener above.
+            if (e.key === "Escape") return true;
             const kind = keyKind(e);
             if (kind) onKey(kind);
             return false;
@@ -87,6 +109,9 @@ function createEditor(parent, onChange, onEscape, onKey) {
       programmatic = true;
       try { view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } }); }
       finally { programmatic = false; }
+    },
+    setReadOnly(readOnly) {
+      view.dispatch({ effects: mode.reconfigure(editing(!readOnly)) });
     },
     focus() { view.focus(); },
   };
@@ -115,4 +140,8 @@ function saveRun(json) {
   }
 }
 
-window.TypeSolution = { createEditor, syntaxError, saveRun };
+window.TypeSolution = {
+  createEditor, syntaxError, saveRun,
+  focus(element) { element.focus(); },
+  random() { return Math.random(); },
+};

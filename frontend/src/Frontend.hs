@@ -1,15 +1,11 @@
 module Frontend where
 
-import Data.List.NonEmpty qualified as NonEmpty
-import Data.Maybe (fromMaybe)
 import Obelisk.Frontend
 import Obelisk.Generated.Static
 import Obelisk.Route
 import Obelisk.Route.Frontend
 import Reflex.Dom
 
-import Common.Bank (bank, lookupPuzzle)
-import Common.Puzzle (Puzzle)
 import Common.Route
 import Frontend.Run (runWidget)
 
@@ -29,12 +25,9 @@ frontendHead = do
   -- The CodeMirror shim, which the Run's editor needs before it mounts.
   elAttr "script" ("src" =: static @"js/editor.js") blank
 
+-- | The exported page shows "Loading…"; the Runs, on a Puzzle picked at
+-- random, start once the app runs in the browser.
 frontendBody :: ObeliskWidget t (R FrontendRoute) m => RoutedT t (R FrontendRoute) m ()
 frontendBody = elClass "main" "run" $
   prerender_ (el "p" $ text "Loading…") $
-    runWidget (static @"js/runner.js") puzzle
-
--- | The Puzzle every Run plays: fizzBuzz for now, or the bank's first if it
--- has none by that name.
-puzzle :: Puzzle
-puzzle = fromMaybe (NonEmpty.head bank) (lookupPuzzle "fizzBuzz")
+    runWidget (static @"js/runner.js")

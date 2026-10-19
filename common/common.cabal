@@ -190,6 +190,7 @@ library
                       Common.Puzzle
                       Common.Route
                       Common.Run
+                      Common.Status
 
     -- Modules included in this library but not exported.
     -- other-modules:
