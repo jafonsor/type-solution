@@ -204,6 +204,7 @@ library
                       --
                     , aeson
                     , bytestring
+                    , containers
                     , directory
                     , filepath
                     , obelisk-route

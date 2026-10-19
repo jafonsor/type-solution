@@ -1,7 +1,7 @@
 {-# LANGUAGE NoOverloadedLists #-}
 -- | The Runs in the browser: the Puzzle, the editor, the checks that run the
--- Solution against the Puzzle's tests whenever the player stops typing, and
--- the menu that starts the next Run. The Run's logic is 'Common.Run'; this
+-- Solution against the Puzzle's tests whenever the player stops typing, the
+-- menu that starts the next Run, and the weak-key lists. The Run's logic is 'Common.Run'; this
 -- module turns the page's events into its events and draws the result.
 module Frontend.Run
   ( runWidget
@@ -11,6 +11,7 @@ import Control.Monad (forM_)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (liftIO)
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Time (NominalDiffTime, getCurrentTime)
 import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
@@ -161,6 +162,28 @@ runWidget workerUrl = mdo
     if open then focusElement firstButton else focusEditor editor
 
   elClass "div" "feedback" $ dyn_ (feedback <$> dPuzzle <*> dRun)
+
+  -- The weak-key lists come from the history, which gains a passed Run's
+  -- record in the frame it passes, so they refresh straight away.
+  elClass "footer" "weak-keys" do
+    weakKeyLine "Most missed" (mostMissed <$> dHistory) \n ->
+      T.pack (show n) <> (if n == 1 then " Correction" else " Corrections")
+    weakKeyLine "Slowest" (slowest <$> dHistory) \ms ->
+      "Median Hesitation " <> T.pack (show (round ms :: Int)) <> " ms"
+
+-- | One weak-key list: its label, then each character in a chip of its own
+-- (so a lone @,@ or @.@ is easy to see), its score in the chip's tooltip.
+-- A dash until some character has enough data. The line's height is fixed,
+-- so filling it moves nothing.
+weakKeyLine
+  :: (DomBuilder t m, PostBuild t m, MonadHold t m, MonadFix m, Eq a)
+  => Text -> Dynamic t [(Char, a)] -> (a -> Text) -> m ()
+weakKeyLine label dKeys describe = elClass "p" "weak-key-line" do
+  elClass "span" "label" $ text (label <> ":")
+  dUniq <- holdUniqDyn dKeys
+  dyn_ $ ffor dUniq \case
+    [] -> elAttr "span" ("class" =: "none" <> "title" =: "Not enough typed yet") $ text "—"
+    ks -> forM_ ks \(c, score) -> elAttr "kbd" ("title" =: describe score) $ text (T.singleton c)
 
 data Choice = NewRandom | Repeat
 

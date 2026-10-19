@@ -257,8 +257,8 @@ data KeyPress = KeyPress
   { key :: Key
   , sincePrevious :: Int
     -- ^ Milliseconds since the previous press, rounded; 0 for the Run's
-    -- first. A Pause between two presses is included (the next ticket's
-    -- Hesitation ignores gaps that long).
+    -- first. A Pause between two presses is included (Hesitation, in
+    -- 'Common.History.slowest', ignores gaps that long).
   }
   deriving stock (Eq, Show)
 

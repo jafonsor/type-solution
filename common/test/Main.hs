@@ -67,6 +67,26 @@ storedRun i secs = RunRecord
   { puzzleIdentity = i, finishedAt = t0, duration = secs, wpm = 40, backspaces = 1
   , solution = "", keyPresses = [] }
 
+-- | A stored record whose key presses are these characters (as 'keyChar'
+-- writes them, so @\b@ is a Backspace), each with its milliseconds since the
+-- previous press.
+keyed :: [(Char, Int)] -> RunRecord
+keyed ps = (storedRun "fizzBuzz" 10)
+  { keyPresses = [KeyPress { key = keyFromChar c, sincePrevious = g } | (c, g) <- ps] }
+
+-- | A stored record of these key presses, 100 ms apart.
+typedRecord :: String -> RunRecord
+typedRecord s = keyed [(c, 100) | c <- s]
+
+-- | Ten presses of each of these characters, so they reach the minimum.
+tenOf :: String -> String
+tenOf = concatMap (replicate 10)
+
+-- | A Run's presses: each character with its gap; the first press of a Run
+-- is never a Hesitation, so a throwaway one leads.
+gapsOf :: [(Char, Int)] -> RunRecord
+gapsOf ps = keyed (('_', 0) : ps)
+
 -- | A Run on fizzBuzz passed in this many seconds, with one word typed.
 passedIn :: Double -> Run
 passedIn secs = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1, CheckFinished (at secs) 1 allPass]
@@ -369,6 +389,91 @@ suite = TestList
       -- Records added in order, oldest first.
       let h2 = addRecord (storedRun "fizzBuzz" 10) (addRecord (storedRun "fizzBuzz" 20) (history []))
       h2 @?= history [storedRun "fizzBuzz" 20, storedRun "fizzBuzz" 10]
+
+  -- Most missed and Slowest
+
+  , "a character typed straight after one or two Backspaces is a Correction; after three or more it isn't" ~: do
+      let h = history [typedRecord ("a\bb" <> "a\b\bc" <> "a\b\b\bd" <> "a\b\b\b\be" <> "\bf" <> tenOf "abcdef")]
+      mostMissed h @?= [('b', 1), ('c', 1), ('f', 1)]
+      -- Only the character straight after counts, and the run starts again after it.
+      mostMissed (history [typedRecord ("x\bgg\bg" <> tenOf "g")]) @?= [('g', 2)]
+
+  , "Most missed counts every Correction over the Runs, most first" ~: do
+      let h = history [ typedRecord ("x\b;x\b;x\b;" <> tenOf ";'"), typedRecord "x\b;x\b'" ]
+      mostMissed h @?= [(';', 4), ('\'', 1)]
+
+  , "Hesitation is the time since the previous press; a character's score is its median" ~: do
+      -- An odd count: the middle one.
+      slowest (history [gapsOf [('m', g) | g <- [100, 200 .. 1100]]]) @?= [('m', 600)]
+      -- An even count: the mean of the two middle ones.
+      slowest (history [gapsOf [('m', g) | g <- [100, 200 .. 1000]]]) @?= [('m', 550)]
+      -- Typed straight after a Backspace still counts (left out, the median would be 1000).
+      slowest (history [gapsOf ([('n', 1000) | _ <- [1 .. 5 :: Int]] <> [('n', 100) | _ <- [1 .. 4 :: Int]] <> [('\b', 100), ('n', 100)])]) @?= [('n', 550)]
+
+  , "Hesitation leaves out gaps over 1.5 s" ~: do
+      let h = history [gapsOf ([('e', 1501) | _ <- [1 .. 6 :: Int]] <> [('e', 50) | _ <- [1 .. 4 :: Int]] <> [('w', 1500) | _ <- [1 .. 10 :: Int]])]
+      slowest h @?= [('w', 1500), ('e', 50)]
+      -- Every gap too long: nothing to score, though typed ten times.
+      slowest (history [gapsOf [('e', 1600) | _ <- [1 .. 10 :: Int]]]) @?= []
+
+  , "Hesitation leaves out each Run's first press" ~: do
+      -- Each Run starts on a slow 'r'; counted, they'd make 'r' the slowest (705 ms).
+      let runOf = keyed [('r', 1400), ('r', 10), ('s', 100), ('s', 100)]
+      slowest (history (replicate 5 runOf)) @?= [('s', 100), ('r', 10)]
+
+  , "the lists use only the last 20 Runs" ~: do
+      let oldest = typedRecord (concat (replicate 10 "z\bz") <> "a\ba")
+          rest = replicate 20 (typedRecord "a\ba")
+      mostMissed (history (oldest : rest)) @?= [('a', 20)]
+      mostMissed (history (oldest : drop 1 rest)) @?= [('a', 20), ('z', 10)]
+      let slowOld = keyed (('_', 0) : [('y', 900) | _ <- [1 .. 10 :: Int]])
+          quick = keyed [('_', 0), ('z', 100)]
+      slowest (history (slowOld : replicate 20 quick)) @?= [('z', 100)]
+
+  , "records without key presses are skipped and don't use up one of the 20" ~: do
+      let oldest = typedRecord (concat (replicate 10 "z\bz") <> "a\ba")
+          rest = replicate 19 (typedRecord "a\ba")
+          bare = storedRun "fizzBuzz" 5
+          h = history ([oldest] <> rest <> replicate 5 bare)
+      mostMissed h @?= [('a', 20), ('z', 10)]
+      -- They still give bests.
+      fmap (.duration) (personalBest "fizzBuzz" h) @?= Just 5
+      mostMissed (history (replicate 3 bare)) @?= []
+
+  , "a character appears only once typed at least 10 times in those Runs" ~: do
+      let h = history [typedRecord ("x\bk" <> replicate 8 'k' <> "x\bq" <> replicate 9 'q')]
+      mostMissed h @?= [('q', 1)]
+      slowest h @?= [('q', 100)]
+      -- Counted over all the Runs together.
+      mostMissed (history [typedRecord ("x\bk" <> replicate 4 'k'), typedRecord "kkkkk"]) @?= [('k', 1)]
+
+  , "Space, Enter, Tab and Backspace never appear" ~: do
+      let h = history [keyed (('_', 0) : concat (replicate 10 [('x', 50), ('\b', 1400), (' ', 1400), ('\b', 1400), ('\n', 1400), ('\b', 1400), ('\t', 1400)]))]
+      mostMissed h @?= []
+      slowest h @?= [('x', 50)]
+
+  , "A and a stay apart" ~: do
+      let h = history [keyed (('_', 0) : concat (replicate 10 [('a', 100), ('\b', 100), ('A', 900)]))]
+      mostMissed h @?= [('A', 10)]
+      slowest h @?= [('A', 900), ('a', 100)]
+
+  , "each list shows at most five characters, worst first, ties by character" ~: do
+      let missed = concat [concat (replicate n ['x', '\b', c]) | (c, n) <- [('.', 3), (',', 3), ('{', 7), ('`', 1), ('"', 2), ('(', 5), (')', 4 :: Int)]]
+          h = history [typedRecord (missed <> tenOf ".,{`\"()")]
+      mostMissed h @?= [('{', 7), ('(', 5), (')', 4), (',', 3), ('.', 3)]
+      let gaps = [(c, g) | (c, g) <- [('.', 300), (',', 300), ('{', 700), ('`', 100), ('"', 200), ('(', 500), (')', 400)], _ <- [1 .. 10 :: Int]]
+      slowest (history [gapsOf gaps]) @?= [('{', 700), ('(', 500), (')', 400), (',', 300), ('.', 300)]
+
+  , "both lists are empty until some character has enough data" ~: do
+      mostMissed (history []) @?= []
+      slowest (history []) @?= []
+      let h = history [typedRecord "f\bfunction"]
+      (mostMissed h, slowest h) @?= ([], [])
+
+  , "a newly added record counts straight away" ~: do
+      let h = history [typedRecord (tenOf ";")]
+      mostMissed h @?= []
+      mostMissed (addRecord (typedRecord "x\b;") h) @?= [(';', 1)]
 
   , "stored records decode one by one: old, stripped and full records read, a broken one is skipped" ~: do
       let old = "{\"puzzle\":\"fizzBuzz\",\"finishedAt\":\"2026-10-17T21:14:03.512Z\",\"seconds\":99.9,\"wordsPerMinute\":10,\"backspaces\":0,\"solution\":\"x\"}"
