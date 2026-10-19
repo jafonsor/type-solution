@@ -43,9 +43,17 @@ records :: [Event] -> [RunRecord]
 records es = mapMaybe (uncurry (recordOnStep fizzBuzz)) (zip runs (drop 1 runs))
   where runs = scanl (flip step) newRun es
 
+-- | A character whose time doesn't matter to the test.
+letter :: Key
+letter = Character 'x'
+
+-- | A key press at a time in milliseconds.
+press :: Double -> Key -> Event
+press = Pressed
+
 -- | A Run under way: started at 1 s, with "x" typed.
 typing :: [Event]
-typing = [Pressed Character, Edited (at 1) "x"]
+typing = [Pressed 0 letter, Edited (at 1) "x"]
 
 pass, failWith :: TestResult
 pass = TestResult { passed = True, got = "\"x\"" }
@@ -167,7 +175,7 @@ suite = TestList
       elapsed (at 5) r @?= 0
 
   , "after a skip, Esc and typing do nothing" ~: do
-      let r = run [Escaped (at 1), Escaped (at 2), Pressed Character, Edited (at 3) "x", CheckStarted 1]
+      let r = run [Escaped (at 1), Escaped (at 2), Pressed 0 letter, Edited (at 3) "x", CheckStarted 1]
       r @?= run [Escaped (at 1)]
 
   , "Esc while typing pauses the Run and stops the clock" ~: do
@@ -200,7 +208,7 @@ suite = TestList
 
   , "edits and key presses are ignored while paused" ~: do
       let paused = run (typing <> [Escaped (at 4)])
-          r = run (typing <> [Escaped (at 4), Pressed Character, Pressed Space, Edited (at 5) "xy"])
+          r = run (typing <> [Escaped (at 4), Pressed 0 letter, Pressed 0 Space, Edited (at 5) "xy"])
       r @?= paused
       r.code @?= "x"
 
@@ -210,7 +218,7 @@ suite = TestList
       r @?= done
 
   , "paused time is left out of the Run's time and words per minute" ~: do
-      let keys5 = concat (replicate 5 [Pressed Character, Pressed Space])
+      let keys5 = concat (replicate 5 [Pressed 0 letter, Pressed 0 Space])
           r = run ( [Edited (at 0) "f"] <> keys5
                   <> [Escaped (at 10), Escaped (at 25), Escaped (at 30), Escaped (at 40)]
                   <> [CheckStarted 1, CheckFinished (at 45) 1 allPass] )
@@ -262,7 +270,7 @@ suite = TestList
         , (Paused, True), (Skipped, True), (Passed, True), (NotStarted, False) ]
 
   , "a Run given up from a Pause leaves no record" ~: do
-      let es = typing <> [Pressed Space, CheckStarted 1, Escaped (at 3), NewRunStarted, CheckFinished (at 3.5) 1 allPass]
+      let es = typing <> [Pressed 0 Space, CheckStarted 1, Escaped (at 3), NewRunStarted, CheckFinished (at 3.5) 1 allPass]
       records es @?= []
       run es @?= newRun
 
@@ -283,10 +291,10 @@ suite = TestList
       after TimedOut @?= "timed out"
 
   , "the pass line gives the time, words per minute and backspaces, and no Esc hint" ~: do
-      let r = run [ Edited (at 0) "f", Pressed Character, Pressed Space, Pressed Backspace
+      let r = run [ Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, Pressed 0 Backspace
                   , CheckStarted 1, CheckFinished (at 12.34) 1 allPass ]
       statusText r @?= "Passed in 12.3 s, 5 wpm, 1 backspace."
-      let r2 = run [ Edited (at 0) "f", Pressed Backspace, Pressed Backspace, CheckStarted 1, CheckFinished (at 6) 1 allPass ]
+      let r2 = run [ Edited (at 0) "f", Pressed 0 Backspace, Pressed 0 Backspace, CheckStarted 1, CheckFinished (at 6) 1 allPass ]
       statusText r2 @?= "Passed in 6.0 s, 0 wpm, 2 backspaces."
 
   , "times read in seconds to a tenth" ~: do
@@ -295,29 +303,59 @@ suite = TestList
       secondsText 75.25 @?= "75.2 s"
 
   , "a space or Enter straight after a character ends a word" ~: do
-      let r = run (map Pressed [Character, Space, Space, Character, Character, Enter, Enter, Character])
+      let r = run (map (Pressed 0) [letter, Space, Space, letter, letter, Enter, Enter, letter])
       r.wordsTyped @?= 2
 
   , "a space after a backspace doesn't end a word" ~: do
-      let r = run (map Pressed [Character, Backspace, Space])
+      let r = run (map (Pressed 0) [letter, Backspace, Space])
       r.wordsTyped @?= 0
 
   , "backspaces are counted" ~: do
-      let r = run (map Pressed [Character, Backspace, Backspace, Character])
+      let r = run (map (Pressed 0) [letter, Backspace, Backspace, letter])
       r.backspaces @?= 2
 
   , "key presses after passing don't count" ~: do
-      let r = run [ Pressed Character, Edited (at 1) "x", CheckStarted 1, CheckFinished (at 2) 1 allPass
-                  , Pressed Space, Pressed Backspace ]
+      let r = run [ Pressed 0 letter, Edited (at 1) "x", CheckStarted 1, CheckFinished (at 2) 1 allPass
+                  , Pressed 0 Space, Pressed 0 Backspace ]
       (r.wordsTyped, r.backspaces) @?= (0, 0)
 
+  , "the Run keeps every key press, in order, with the milliseconds since the one before" ~: do
+      let es = [ press 1000.4 (Character 'f'), Edited (at 1) "f", press 1120.4 (Character 'n')
+               , press 1200 Backspace, press 1295.6 (Character 'u'), press 1400 Space
+               , press 1450 Enter, press 1500 Tab
+               , CheckStarted 1, CheckFinished (at 3) 1 allPass ]
+      map (\kp -> (kp.key, kp.sincePrevious)) (concatMap (.keyPresses) (records es)) @?=
+        [ (Character 'f', 0), (Character 'n', 120), (Backspace, 80), (Character 'u', 96)
+        , (Space, 104), (Enter, 50), (Tab, 50) ]
+      -- Counting is as before.
+      let r = run es
+      (r.wordsTyped, r.backspaces) @?= (1, 1)
+
+  , "A and a are kept as different characters" ~: do
+      let es = [press 0 (Character 'A'), Edited (at 1) "A", press 90 (Character 'a'), CheckStarted 1, CheckFinished (at 2) 1 allPass]
+      map (.key) (concatMap (.keyPresses) (records es)) @?= [Character 'A', Character 'a']
+
+  , "only a Space or Enter straight after a character ends a word; Tab never does" ~: do
+      let r = run (map (Pressed 0) [Character 'a', Tab, Space, Character '{', Enter, Character '1', Tab])
+      r.wordsTyped @?= 1
+
+  , "key presses while paused, after a skip or after a pass aren't kept" ~: do
+      let toPause = [press 0 (Character 'a'), Edited (at 1) "a", Escaped (at 2)]
+          es = toPause <> [press 50 (Character 'b'), Escaped (at 3), press 1000 (Character 'c')
+                          , CheckStarted 1, CheckFinished (at 4) 1 allPass, press 2000 (Character 'd'), press 2100 Space]
+      -- The gap after a Pause includes the paused time.
+      map (\kp -> (kp.key, kp.sincePrevious)) (concatMap (.keyPresses) (records es))
+        @?= [(Character 'a', 0), (Character 'c', 1000)]
+      (run (es <> [press 3000 (Character 'e')])).presses @?= [(1000, Character 'c'), (0, Character 'a')]
+      (run [Escaped (at 1), press 10 (Character 'z')]).presses @?= []
+
   , "a new Run clears the counts" ~: do
-      let r = run [Pressed Character, Edited (at 1) "x", Pressed Space, Pressed Backspace, Escaped (at 2), NewRunStarted]
+      let r = run [Pressed 0 letter, Edited (at 1) "x", Pressed 0 Space, Pressed 0 Backspace, Escaped (at 2), NewRunStarted]
       r @?= newRun
 
   , "a passed Run's record has its time, words per minute, backspaces and Solution" ~: do
-      let keys5 = concat (replicate 5 [Pressed Character, Pressed Space])
-          r = run ( [Edited (at 0) "f"] <> keys5 <> [Pressed Backspace, Edited (at 1) "function fizzBuzz"]
+      let keys5 = concat (replicate 5 [Pressed 0 letter, Pressed 0 Space])
+          r = run ( [Edited (at 0) "f"] <> keys5 <> [Pressed 0 Backspace, Edited (at 1) "function fizzBuzz"]
                   <> [CheckStarted 1, CheckFinished (at 30) 1 allPass] )
       runRecord fizzBuzz r @?= Just RunRecord
         { puzzleIdentity = "fizzBuzz"
@@ -326,11 +364,13 @@ suite = TestList
         , wpm = 10
         , backspaces = 1
         , solution = "function fizzBuzz"
+        , keyPresses = map (\k -> KeyPress { key = k, sincePrevious = 0 })
+            (concat (replicate 5 [letter, Space]) <> [Backspace])
         }
 
   , "a passed Run's record names the Puzzle by its identity, not its function" ~: do
       let p = fizzBuzz { identity = "fizzBuzzAgain" }
-          r = run [Edited (at 0) "f", Pressed Character, Pressed Space, CheckStarted 1, CheckFinished (at 6) 1 allPass]
+          r = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1, CheckFinished (at 6) 1 allPass]
           rr = runRecord p r
       fmap (.puzzleIdentity) rr @?= Just "fizzBuzzAgain"
       case fmap (decode . encode) rr :: Maybe (Maybe Value) of
@@ -340,8 +380,13 @@ suite = TestList
   , "a record reads back what it writes" ~: do
       let rr = RunRecord
             { puzzleIdentity = "fizzBuzz", finishedAt = at 30, duration = 29.5
-            , wpm = 41.25, backspaces = 3, solution = "function fizzBuzz(n) {}" }
+            , wpm = 41.25, backspaces = 3, solution = "function fizzBuzz(n) {}"
+            , keyPresses =
+                [ KeyPress (Character 'f') 0, KeyPress Space 120, KeyPress Enter 80, KeyPress Tab 95
+                , KeyPress Backspace 3000, KeyPress (Character 'A') 7, KeyPress (Character '€') 1
+                , KeyPress (Character '\128512') 2, KeyPress (Character '"') 3, KeyPress (Character '\\') 4 ] }
       eitherDecode (encode rr) @?= Right rr
+      eitherDecode (encode rr { keyPresses = [] }) @?= Right rr { keyPresses = [] }
 
   , "a record stored before Puzzles had an identity still reads" ~: do
       let old = "{\"backspaces\":2,\"finishedAt\":\"2026-10-17T21:14:03.512Z\",\"puzzle\":\"fizzBuzz\",\"seconds\":24.731,\"solution\":\"function fizzBuzz(n) {\\n  return n;\\n}\",\"wordsPerMinute\":38.81}"
@@ -352,7 +397,36 @@ suite = TestList
         , wpm = 38.81
         , backspaces = 2
         , solution = "function fizzBuzz(n) {\n  return n;\n}"
+        , keyPresses = []
         }
+
+  , "a record stores its key presses as a string of keys and a list of gaps" ~: do
+      let rr = RunRecord
+            { puzzleIdentity = "fizzBuzz", finishedAt = at 30, duration = 29.5
+            , wpm = 41.25, backspaces = 1, solution = "aB"
+            , keyPresses = [KeyPress (Character 'a') 0, KeyPress Backspace 80, KeyPress (Character 'B') 95, KeyPress Space 10, KeyPress Enter 20, KeyPress Tab 30] }
+      case decode (encode rr) :: Maybe Value of
+        Just (Object o) -> do
+          KeyMap.lookup "keys" o @?= Just (String "a\bB \n\t")
+          KeyMap.lookup "gaps" o @?= Just (Array [Number 0, Number 80, Number 95, Number 10, Number 20, Number 30])
+        other -> assertFailure ("expected a JSON object, got " <> show other)
+
+  , "a record with key presses, written by hand, reads" ~: do
+      let stored = "{\"backspaces\":1,\"finishedAt\":\"2026-10-19T10:00:00Z\",\"gaps\":[0,120,80,95],\"keys\":\"Ab\\b \",\"puzzle\":\"fizzBuzz\",\"seconds\":4,\"solution\":\"A \",\"wordsPerMinute\":15}"
+      fmap (.keyPresses) (eitherDecode stored :: Either String RunRecord)
+        @?= Right [KeyPress (Character 'A') 0, KeyPress (Character 'b') 120, KeyPress Backspace 80, KeyPress Space 95]
+
+  , "a record whose key presses were stripped to make room still reads, with its summary" ~: do
+      let stripped = "{\"backspaces\":1,\"finishedAt\":\"2026-10-19T10:00:00Z\",\"puzzle\":\"fizzBuzz\",\"seconds\":4,\"solution\":\"A \",\"wordsPerMinute\":15}"
+      fmap (\rr -> (rr.puzzleIdentity, rr.duration, rr.wpm, rr.backspaces, rr.solution, rr.keyPresses)) (eitherDecode stripped :: Either String RunRecord)
+        @?= Right ("fizzBuzz", 4, 15, 1, "A ", [])
+
+  , "a record with keys but no gaps, or a gap too few, doesn't read" ~: do
+      let base = "\"backspaces\":1,\"finishedAt\":\"2026-10-19T10:00:00Z\",\"puzzle\":\"fizzBuzz\",\"seconds\":4,\"solution\":\"A \",\"wordsPerMinute\":15"
+          bad1 = "{" <> base <> ",\"keys\":\"ab\"}"
+          bad2 = "{" <> base <> ",\"keys\":\"ab\",\"gaps\":[0]}"
+      assertBool "keys without gaps" (isLeft (eitherDecode bad1 :: Either String RunRecord))
+      assertBool "a gap too few" (isLeft (eitherDecode bad2 :: Either String RunRecord))
 
   , "the bank's fizzBuzz is the fizzBuzz Puzzle the game has always played" ~: do
       lookupPuzzle "fizzBuzz" @?= Just fizzBuzz
@@ -414,7 +488,7 @@ suite = TestList
       assertBool "an empty bank should fail" (isLeft (parseBank []))
 
   , "a Run that hasn't passed has no record" ~: do
-      runRecord fizzBuzz (run [Edited (at 0) "f", Pressed Character]) @?= Nothing
+      runRecord fizzBuzz (run [Edited (at 0) "f", Pressed 0 letter]) @?= Nothing
 
   , "failures pair each failed test's call with what the Solution returned" ~: do
       let rs = [pass, failWith, pass, pass]

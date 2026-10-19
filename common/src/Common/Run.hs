@@ -8,6 +8,10 @@ module Common.Run
   , Outcome (..)
   , TestResult (..)
   , Key (..)
+  , keyChar
+  , keyFromChar
+  , Millis
+  , KeyPress (..)
   , newRun
   , step
   , menuOpen
@@ -23,11 +27,12 @@ module Common.Run
   ) where
 
 import Control.Applicative ((<|>))
-import Data.Aeson (FromJSON (..), ToJSON (..), Value, object, withObject, (.:), (.=))
+import Data.Aeson (FromJSON (..), ToJSON (..), Value, object, withObject, (.:), (.:?), (.=))
 import Data.Aeson qualified as Aeson
 import Data.Aeson.Types (Parser, parseMaybe)
 import Data.ByteString.Lazy qualified as LBS
 import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Maybe (fromMaybe)
 import Data.Time (NominalDiffTime, UTCTime, diffUTCTime)
@@ -78,7 +83,8 @@ data Run = Run
   , wordsTyped :: Int
     -- ^ Spaces and Enters pressed straight after a character.
   , backspaces :: Int
-  , lastKey :: Maybe Key
+  , presses :: [(Millis, Key)]
+    -- ^ Every key press the Run kept, newest first, with its time.
   , pausedSince :: Maybe UTCTime
     -- ^ When the Pause under way began.
   , pausedFor :: NominalDiffTime
@@ -88,13 +94,40 @@ data Run = Run
   }
   deriving stock (Eq, Show)
 
--- | The key presses a Run counts; the editor reports no others.
-data Key = Character | Space | Enter | Backspace
+-- | The key presses a Run counts; the editor reports no others. A
+-- character is what the browser typed, not which key made it (the player's
+-- layout is unknown), so @A@ and @a@ differ, and Option/AltGr characters
+-- count. Shortcuts (Cmd or Ctrl) and dead keys aren't reported.
+data Key = Character Char | Space | Enter | Tab | Backspace
   deriving stock (Eq, Show)
+
+-- | The key as one character, as the editor reports it and the record
+-- stores it: itself, or a space, newline, tab or backspace (@\b@).
+keyChar :: Key -> Char
+keyChar = \case
+  Character c -> c
+  Space -> ' '
+  Enter -> '\n'
+  Tab -> '\t'
+  Backspace -> '\b'
+
+-- | The inverse of 'keyChar'.
+keyFromChar :: Char -> Key
+keyFromChar = \case
+  ' ' -> Space
+  '\n' -> Enter
+  '\t' -> Tab
+  '\b' -> Backspace
+  c -> Character c
+
+-- | A key press's time in milliseconds on the browser's monotonic clock (the
+-- keydown event's @timeStamp@). Only differences between two presses mean
+-- anything; it's a different clock from the 'UTCTime's other events carry.
+type Millis = Double
 
 data Event
   = Edited UTCTime Text
-  | Pressed Key
+  | Pressed Millis Key
   | CheckStarted Int
   | CheckFinished UTCTime Int Outcome
   | Escaped UTCTime
@@ -115,7 +148,7 @@ newRun = Run
   , code = ""
   , wordsTyped = 0
   , backspaces = 0
-  , lastKey = Nothing
+  , presses = []
   , pausedSince = Nothing
   , pausedFor = 0
   , resumeTo = Typing
@@ -135,19 +168,23 @@ step e r = case (e, r.phase) of
   (Escaped t, ph) -> r { phase = Paused, resumeTo = ph, pausedSince = Just t }
   -- The editor is read-only while Paused; nothing typed counts.
   (Edited _ _, Paused) -> r
-  (Pressed _, Paused) -> r
+  (Pressed _ _, Paused) -> r
   (Edited t c, _) -> r
     { phase = Typing
     , startedAt = r.startedAt <|> Just t
     , awaiting = Nothing
     , code = c
     }
-  (Pressed k, _) -> r
-    { wordsTyped = r.wordsTyped + (if endsWord k then 1 else 0)
+  (Pressed t k, _) -> r
+    { wordsTyped = r.wordsTyped + (if endsWord then 1 else 0)
     , backspaces = r.backspaces + (if k == Backspace then 1 else 0)
-    , lastKey = Just k
+    , presses = (t, k) : r.presses
     }
-    where endsWord key = (key == Space || key == Enter) && r.lastKey == Just Character
+    where
+      endsWord = (k == Space || k == Enter) && afterCharacter
+      afterCharacter = case r.presses of
+        (_, Character _) : _ -> True
+        _ -> False
   -- Nothing typed yet, nothing to check: a check left over from a dropped
   -- Run.
   (CheckStarted _, NotStarted) -> r
@@ -209,8 +246,29 @@ data RunRecord = RunRecord
   , wpm :: Double
   , backspaces :: Int
   , solution :: Text
+  , keyPresses :: [KeyPress]
+    -- ^ In the order pressed. Empty in records stored before Runs kept
+    -- them, and in old records stripped to make room in a full storage.
   }
   deriving stock (Eq, Show)
+
+-- | One kept key press, as a record stores it.
+data KeyPress = KeyPress
+  { key :: Key
+  , sincePrevious :: Int
+    -- ^ Milliseconds since the previous press, rounded; 0 for the Run's
+    -- first. A Pause between two presses is included (the next ticket's
+    -- Hesitation ignores gaps that long).
+  }
+  deriving stock (Eq, Show)
+
+-- | The Run's presses, oldest first, each with the time since the one before.
+keyPressesOf :: Run -> [KeyPress]
+keyPressesOf r = zipWith gap (Nothing : map (Just . fst) ps) ps
+  where
+    ps = reverse r.presses
+    gap prev (t, k) = KeyPress
+      { key = k, sincePrevious = maybe 0 (\p -> max 0 (round (t - p))) prev }
 
 runRecord :: Puzzle -> Run -> Maybe RunRecord
 runRecord p r = case (r.phase, r.finishedAt, wordsPerMinute r) of
@@ -221,6 +279,7 @@ runRecord p r = case (r.phase, r.finishedAt, wordsPerMinute r) of
     , wpm = perMinute
     , backspaces = r.backspaces
     , solution = r.code
+    , keyPresses = keyPressesOf r
     }
   _ -> Nothing
 
@@ -235,6 +294,12 @@ recordOnStep p old new
 recordText :: RunRecord -> Text
 recordText = T.decodeUtf8 . LBS.toStrict . Aeson.encode
 
+-- | The key presses are two fields, kept compact as storage is small (about
+-- 5 MB for every Run): @keys@, a string with one character per press (see
+-- 'keyChar'), and @gaps@, the milliseconds since the previous press, one
+-- number per press. For example @"keys": "ab\\bc\\n", "gaps": [0, 120, 80, 95, 210]@.
+-- When storage is full the shim deletes both from the oldest records; the
+-- rest of a record is never dropped.
 instance ToJSON RunRecord where
   toJSON rr = object
     [ "puzzle" .= rr.puzzleIdentity
@@ -243,6 +308,8 @@ instance ToJSON RunRecord where
     , "wordsPerMinute" .= rr.wpm
     , "backspaces" .= rr.backspaces
     , "solution" .= rr.solution
+    , "keys" .= T.pack (map (keyChar . (.key)) rr.keyPresses)
+    , "gaps" .= map (.sincePrevious) rr.keyPresses
     ]
 
 -- | Reads what 'toJSON' writes, records stored by earlier versions included.
@@ -254,8 +321,16 @@ instance FromJSON RunRecord where
     w <- o .: "wordsPerMinute"
     b <- o .: "backspaces"
     s <- o .: "solution"
+    ks <- o .:? "keys"
+    gs <- o .:? "gaps"
+    ps <- case (ks, gs) of
+      (Nothing, Nothing) -> pure []
+      (Just k, Just g)
+        | T.length k == length g -> pure (zipWith KeyPress (map keyFromChar (T.unpack k)) g)
+      _ -> fail "keys and gaps must both be there, one gap per key"
     pure RunRecord
-      { puzzleIdentity = i, finishedAt = f, duration = d, wpm = w, backspaces = b, solution = s }
+      { puzzleIdentity = i, finishedAt = f, duration = d, wpm = w, backspaces = b, solution = s
+      , keyPresses = ps }
 
 -- | Each failed test as its call, the expected value and what the Solution
 -- returned.

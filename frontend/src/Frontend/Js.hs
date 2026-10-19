@@ -1,7 +1,8 @@
 {-# LANGUAGE NoOverloadedLists #-}
 -- | The JavaScript seam: the CodeMirror shim (static/editor, loaded as
 -- @window.TypeSolution@) and the test-runner worker (static/src/js/runner.js).
--- Reflex sees only document text, the Escape key and the worker's replies.
+-- Reflex sees only document text, the Escape key, the key presses a Run
+-- counts (with their times) and the worker's replies.
 module Frontend.Js
   ( Editor
   , createEditor
@@ -23,28 +24,32 @@ import Control.Monad (forM_, void)
 import Control.Monad.IO.Class (MonadIO, liftIO)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, writeIORef)
 import Data.Text (Text)
+import Data.Text qualified as T
 import GHCJS.DOM.Types (Element (..))
 import Language.Javascript.JSaddle
 
-import Common.Run (Key (..))
+import Common.Run (Key, Millis, keyFromChar)
 
 newtype Editor = Editor JSVal
 
 -- | Mount an editor in the element. The callbacks get the whole document on
 -- every change the player makes, the Escape key (pressed anywhere on the
--- page), and each key press a Run counts.
-createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Key -> JSM ()) -> JSM Editor
+-- page), and each key press a Run counts with its time.
+createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Millis -> Key -> JSM ()) -> JSM Editor
 createEditor parent onChange onEscape onKey = do
   changed <- function \_ _ args -> forM_ (take 1 args) \a ->
     fromJSValUnchecked a >>= onChange
   escaped <- function \_ _ _ -> onEscape
-  pressed <- function \_ _ args -> forM_ (take 1 args) \a ->
-    fromJSValUnchecked a >>= \case
-      ("character" :: Text) -> onKey Character
-      "space" -> onKey Space
-      "enter" -> onKey Enter
-      "backspace" -> onKey Backspace
-      _ -> pure ()
+  -- The shim sends the key as one character (see 'keyFromChar') and the
+  -- keydown event's timeStamp.
+  pressed <- function \_ _ args -> case args of
+    a : b : _ -> do
+      k <- fromJSValUnchecked a
+      t <- fromJSValUnchecked b
+      case T.unpack k of
+        [c] -> onKey t (keyFromChar c)
+        _ -> pure ()
+    _ -> pure ()
   Editor <$> (jsg ("TypeSolution" :: Text) # ("createEditor" :: Text) $ (unElement parent, changed, escaped, pressed))
 
 -- | Replace the document, without calling the change callback.

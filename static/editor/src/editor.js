@@ -6,8 +6,11 @@
 // light and dark schemes.
 //
 //   const editor = TypeSolution.createEditor(parent, onChange, onEscape, onKey);
-//     // onKey gets "character", "space", "enter" or "backspace" for each
-//     // such key press the player makes; other keys aren't reported.
+//     // onKey(key, time) gets each key press a Run counts, while the editor
+//     // is editable: key is the character the browser typed, or " ", "\n",
+//     // "\t" or "\b" for Space, Enter, Tab and Backspace (Common.Run's
+//     // keyChar); time is the keydown event's timeStamp, in milliseconds.
+//     // Other keys aren't reported.
 //     // onEscape gets every Esc on the page, wherever the focus is (the
 //     // menu's buttons included), so it works while the editor is read-only.
 //   editor.setDoc(text);   // replace the document without calling onChange
@@ -17,6 +20,7 @@
 //   TypeSolution.random()           // Math.random(), a number in [0, 1)
 //   TypeSolution.syntaxError(code)  // null, or the parser's message
 //   TypeSolution.saveRun(json)      // append a finished Run to browser storage
+//                                   // (storage.mjs: what happens when it's full)
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState, Prec, Compartment } from "@codemirror/state";
 import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
@@ -24,6 +28,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { javascript } from "@codemirror/lang-javascript";
 import { tags as t } from "@lezer/highlight";
 import * as acorn from "acorn";
+import * as storage from "./storage.mjs";
 
 const theme = EditorView.theme({
   "&": { color: "var(--editor-fg)", backgroundColor: "var(--editor-bg)" },
@@ -47,15 +52,24 @@ const highlight = HighlightStyle.define([
   { tag: t.invalid, color: "var(--bad)" },
 ]);
 
-// The kind of key press a Run counts, or null.
-function keyKind(e) {
+// The key press as a Run counts it (see createEditor's onKey), or null.
+// It is what the browser typed, Shift and Option included, so "A" and "a"
+// differ and the player's layout decides what each physical key is.
+function keyOf(e) {
   // Shortcuts aren't typing. Option (and AltGr, which reports Ctrl+Alt)
   // types characters on many layouts, so it is.
-  if (e.isComposing || e.metaKey || (e.ctrlKey && !e.altKey)) return null;
-  if (e.key === " ") return "space";
-  if (e.key === "Enter") return "enter";
-  if (e.key === "Backspace") return "backspace";
-  if (e.key.length === 1) return "character";
+  if (e.metaKey || (e.ctrlKey && !e.altKey)) return null;
+  // A dead key ("Dead") or an input method ("Process", or anything while
+  // composing) is half of a character: neither is reported, and the
+  // character it makes is reported only if its own keydown isn't marked as
+  // composing (browsers differ).
+  if (e.isComposing || e.key === "Dead" || e.key === "Process") return null;
+  if (e.key === "Enter") return "\n";
+  if (e.key === "Tab") return "\t";
+  if (e.key === "Backspace") return "\b";
+  // One character (one code point, so an emoji counts too); names such as
+  // "ArrowLeft" or "Shift" are longer.
+  if ([...e.key].length === 1) return e.key;
   return null;
 }
 
@@ -89,11 +103,17 @@ function createEditor(parent, onChange, onEscape, onKey) {
         keymap.of([...defaultKeymap, ...historyKeymap]),
         mode.of(editing(true)),
         Prec.highest(EditorView.domEventHandlers({
-          keydown(e) {
+          keydown(e, view) {
             // Esc belongs to the page's listener above.
             if (e.key === "Escape") return true;
-            const kind = keyKind(e);
-            if (kind) onKey(kind);
+            // Read-only (the menu is open), nothing is typing: Tab moves
+            // the focus on.
+            if (view.state.readOnly) return false;
+            const key = keyOf(e);
+            // timeStamp: when the key went down, on the page's monotonic
+            // clock, so the time between presses is exact to well under a
+            // millisecond however busy the page is afterwards.
+            if (key !== null) onKey(key, e.timeStamp);
             return false;
           },
         })),
@@ -127,14 +147,11 @@ function syntaxError(code) {
 }
 
 // Finished Runs live in this browser only. Storage can be unavailable
-// (private windows, blocked site data); the Run is then just not kept.
-const runsKey = "type-solution.runs";
-
+// (private windows, blocked site data; even reading `localStorage` can
+// throw) or full; the Run is then just not kept, and play goes on.
 function saveRun(json) {
   try {
-    const runs = JSON.parse(localStorage.getItem(runsKey) || "[]");
-    runs.push(JSON.parse(json));
-    localStorage.setItem(runsKey, JSON.stringify(runs));
+    storage.saveRun(localStorage, JSON.parse(json));
   } catch (err) {
     console.warn("Run not saved:", err);
   }

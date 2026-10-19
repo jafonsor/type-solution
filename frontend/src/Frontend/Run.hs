@@ -58,7 +58,7 @@ runWidget workerUrl = mdo
   (eReply, fireReply) <- newTriggerEvent
   (eKey, fireKey) <- newTriggerEvent
   editor <- liftJSM $ createEditor (_element_raw box)
-    (liftIO . fireCode) (liftIO (fireEscape ())) (liftIO . fireKey)
+    (liftIO . fireCode) (liftIO (fireEscape ())) (\t k -> liftIO (fireKey (Pressed t k)))
   checker <- newChecker
   -- The editor is built before it's on the page, so it's focused once it
   -- is: the player can start typing straight away.
@@ -123,7 +123,7 @@ runWidget workerUrl = mdo
 
   dRun <- foldDyn (\es r -> foldl (flip step) r es) newRun $ mergeWith (<>)
     [ eEdited, (\(_, _, es) -> es) <$> eStarted, eFinished, eTimedOut, eEscaped
-    , [NewRunStarted] <$ ePuzzle, (\k -> [Pressed k]) <$> eKey ]
+    , [NewRunStarted] <$ ePuzzle, (: []) <$> eKey ]
 
   -- A Run that has just passed is kept in the browser; one given up isn't.
   let eRecord = attachWithMaybe

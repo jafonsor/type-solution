@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "description": "CodeMirror 6 editor shim for the Type Solution frontend; bundled by static/default.nix with esbuild.",
+  "scripts": {
+    "test": "node --test test/storage.test.mjs"
+  },
   "dependencies": {
     "@codemirror/commands": "^6.11.1",
     "@codemirror/lang-javascript": "^6.2.5",
