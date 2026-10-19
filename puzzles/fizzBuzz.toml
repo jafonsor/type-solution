@@ -1,0 +1,30 @@
+function = "fizzBuzz"
+signature = "fizzBuzz(n)"
+prompt = """
+Return "Fizz" for multiples of 3, "Buzz" for multiples of 5, \
+"FizzBuzz" for both, otherwise the number as a string."""
+
+reference = '''
+function fizzBuzz(n) {
+  if (n % 15 === 0) return "FizzBuzz";
+  if (n % 3 === 0) return "Fizz";
+  if (n % 5 === 0) return "Buzz";
+  return String(n);
+}
+'''
+
+[[tests]]
+args = [3]
+expected = "Fizz"
+
+[[tests]]
+args = [10]
+expected = "Buzz"
+
+[[tests]]
+args = [30]
+expected = "FizzBuzz"
+
+[[tests]]
+args = [7]
+expected = "7"

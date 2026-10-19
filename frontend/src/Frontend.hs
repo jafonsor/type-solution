@@ -1,12 +1,15 @@
 module Frontend where
 
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Maybe (fromMaybe)
 import Obelisk.Frontend
 import Obelisk.Generated.Static
 import Obelisk.Route
 import Obelisk.Route.Frontend
 import Reflex.Dom
 
-import Common.Puzzle (fizzBuzz)
+import Common.Bank (bank, lookupPuzzle)
+import Common.Puzzle (Puzzle)
 import Common.Route
 import Frontend.Run (runWidget)
 
@@ -29,4 +32,9 @@ frontendHead = do
 frontendBody :: ObeliskWidget t (R FrontendRoute) m => RoutedT t (R FrontendRoute) m ()
 frontendBody = elClass "main" "run" $
   prerender_ (el "p" $ text "Loading…") $
-    runWidget (static @"js/runner.js") fizzBuzz
+    runWidget (static @"js/runner.js") puzzle
+
+-- | The Puzzle every Run plays: fizzBuzz for now, or the bank's first if it
+-- has none by that name.
+puzzle :: Puzzle
+puzzle = fromMaybe (NonEmpty.head bank) (lookupPuzzle "fizzBuzz")

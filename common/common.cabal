@@ -45,7 +45,11 @@ build-type:         Simple
 extra-doc-files:
 
 -- Extra source files to be distributed with the package, such as examples, or a tutorial module.
--- extra-source-files:
+-- The Puzzle files, which Common.Bank embeds at build time. Listing them
+-- makes cabal rebuild when one is added or edited, and puts them in the
+-- package's source in the Nix store (haskell.nix copies only the files a
+-- package names).
+extra-source-files: ../puzzles/*.toml
 
 flag strict
   description: Build with options, such as -Werror, which are inconvenient for development but good for CI
@@ -182,6 +186,7 @@ library
 
     -- Modules exported by the library.
     exposed-modules:  Common
+                      Common.Bank
                       Common.Puzzle
                       Common.Route
                       Common.Run
@@ -197,9 +202,14 @@ library
                       --
                     , aeson
                     , bytestring
+                    , directory
+                    , filepath
                     , obelisk-route
+                    , scientific
+                    , template-haskell
                     , text
                     , time
+                    , toml-parser
 
     -- Directories containing source files.
     hs-source-dirs:   src

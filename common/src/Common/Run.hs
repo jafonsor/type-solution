@@ -140,8 +140,10 @@ wordsPerMinute r = case (r.startedAt, r.finishedAt) of
 
 -- | What a passed Run leaves behind.
 data RunRecord = RunRecord
-  { puzzleFunction :: Text
-    -- ^ Which Puzzle: its function name.
+  { puzzleIdentity :: Text
+    -- ^ Which Puzzle: its identity (file name). Records stored before
+    -- Puzzles had one hold the function name here; for fizzBuzz they're
+    -- the same.
   , finishedAt :: UTCTime
   , duration :: Double
     -- ^ In seconds.
@@ -154,7 +156,7 @@ data RunRecord = RunRecord
 runRecord :: Puzzle -> Run -> Maybe RunRecord
 runRecord p r = case (r.phase, r.finishedAt, wordsPerMinute r) of
   (Passed, Just f, Just perMinute) -> Just RunRecord
-    { puzzleFunction = p.function
+    { puzzleIdentity = p.identity
     , finishedAt = f
     , duration = realToFrac (elapsed f r)
     , wpm = perMinute
@@ -169,13 +171,25 @@ recordText = T.decodeUtf8 . LBS.toStrict . Aeson.encode
 
 instance ToJSON RunRecord where
   toJSON rr = object
-    [ "puzzle" .= rr.puzzleFunction
+    [ "puzzle" .= rr.puzzleIdentity
     , "finishedAt" .= rr.finishedAt
     , "seconds" .= rr.duration
     , "wordsPerMinute" .= rr.wpm
     , "backspaces" .= rr.backspaces
     , "solution" .= rr.solution
     ]
+
+-- | Reads what 'toJSON' writes, records stored by earlier versions included.
+instance FromJSON RunRecord where
+  parseJSON = withObject "RunRecord" \o -> do
+    i <- o .: "puzzle"
+    f <- o .: "finishedAt"
+    d <- o .: "seconds"
+    w <- o .: "wordsPerMinute"
+    b <- o .: "backspaces"
+    s <- o .: "solution"
+    pure RunRecord
+      { puzzleIdentity = i, finishedAt = f, duration = d, wpm = w, backspaces = b, solution = s }
 
 -- | Each failed test as its call, the expected value and what the Solution
 -- returned.

@@ -1,16 +1,21 @@
 module Main (main) where
 
 import Control.Monad (unless)
-import Data.Aeson (Value (..), decode)
+import Data.Aeson (Value (..), decode, eitherDecode, encode)
 import Data.Aeson.Key qualified as Key
 import Data.Aeson.KeyMap qualified as KeyMap
 import Data.ByteString.Lazy qualified as LBS
-import Data.List (sort)
+import Data.Either (isLeft)
+import Data.List (isInfixOf, sort)
+import Data.List.NonEmpty qualified as NonEmpty
+import Data.Text (Text)
+import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
 import System.Exit (exitFailure)
 import Test.HUnit
 
+import Common.Bank
 import Common.Puzzle
 import Common.Run
 
@@ -31,6 +36,45 @@ run = foldl (flip step) newRun
 pass, failWith :: TestResult
 pass = TestResult { passed = True, got = "\"x\"" }
 failWith = TestResult { passed = False, got = "\"3\"" }
+
+-- | fizzBuzz as it was written in Haskell before Puzzles became files.
+fizzBuzz :: Puzzle
+fizzBuzz = Puzzle
+  { identity = "fizzBuzz"
+  , function = "fizzBuzz"
+  , signature = "fizzBuzz(n)"
+  , prompt = "Return \"Fizz\" for multiples of 3, \"Buzz\" for multiples of 5, \"FizzBuzz\" for both, otherwise the number as a string."
+  , reference = "function fizzBuzz(n) {\n  if (n % 15 === 0) return \"FizzBuzz\";\n  if (n % 3 === 0) return \"Fizz\";\n  if (n % 5 === 0) return \"Buzz\";\n  return String(n);\n}\n"
+  , tests =
+      [ PuzzleTest { args = [Number 3], expected = String "Fizz" }
+      , PuzzleTest { args = [Number 10], expected = String "Buzz" }
+      , PuzzleTest { args = [Number 30], expected = String "FizzBuzz" }
+      , PuzzleTest { args = [Number 7], expected = String "7" }
+      ]
+  }
+
+-- | A small Puzzle file, and its lines.
+sampleFile :: [Text]
+sampleFile =
+  [ "function = \"double\""
+  , "signature = \"double(x)\""
+  , "prompt = \"Return x times two.\""
+  , "reference = \"function double(x) { return x * 2; }\""
+  , "[[tests]]"
+  , "args = [2]"
+  , "expected = 4"
+  , "[[tests]]"
+  , "args = [[1, 2.5], {a = \"b\"}, true]"
+  , "expected = \"x\""
+  ]
+
+parsesTo :: [Text] -> Either String Puzzle
+parsesTo = parsePuzzle "double" . T.unlines
+
+failsMentioning :: String -> Either String Puzzle -> Assertion
+failsMentioning want = \case
+  Left e -> assertBool ("error should mention " <> show want <> ": " <> e) (want `isInfixOf` e)
+  Right p -> assertFailure ("expected an error, got " <> show p)
 
 allPass :: Outcome
 allPass = Results (map (const pass) fizzBuzz.tests)
@@ -122,13 +166,80 @@ suite = TestList
           r = run ( [Edited (at 0) "f"] <> keys5 <> [Pressed Backspace, Edited (at 1) "function fizzBuzz"]
                   <> [CheckStarted 1, CheckFinished (at 30) 1 allPass] )
       runRecord fizzBuzz r @?= Just RunRecord
-        { puzzleFunction = "fizzBuzz"
+        { puzzleIdentity = "fizzBuzz"
         , finishedAt = at 30
         , duration = 30
         , wpm = 10
         , backspaces = 1
         , solution = "function fizzBuzz"
         }
+
+  , "a passed Run's record names the Puzzle by its identity, not its function" ~: do
+      let p = fizzBuzz { identity = "fizzBuzzAgain" }
+          r = run [Edited (at 0) "f", Pressed Character, Pressed Space, CheckStarted 1, CheckFinished (at 6) 1 allPass]
+          rr = runRecord p r
+      fmap (.puzzleIdentity) rr @?= Just "fizzBuzzAgain"
+      case fmap (decode . encode) rr :: Maybe (Maybe Value) of
+        Just (Just (Object o)) -> KeyMap.lookup "puzzle" o @?= Just (String "fizzBuzzAgain")
+        other -> assertFailure ("expected a JSON object, got " <> show other)
+
+  , "a record reads back what it writes" ~: do
+      let rr = RunRecord
+            { puzzleIdentity = "fizzBuzz", finishedAt = at 30, duration = 29.5
+            , wpm = 41.25, backspaces = 3, solution = "function fizzBuzz(n) {}" }
+      eitherDecode (encode rr) @?= Right rr
+
+  , "a record stored before Puzzles had an identity still reads" ~: do
+      let old = "{\"backspaces\":2,\"finishedAt\":\"2026-10-17T21:14:03.512Z\",\"puzzle\":\"fizzBuzz\",\"seconds\":24.731,\"solution\":\"function fizzBuzz(n) {\\n  return n;\\n}\",\"wordsPerMinute\":38.81}"
+      eitherDecode old @?= Right RunRecord
+        { puzzleIdentity = "fizzBuzz"
+        , finishedAt = UTCTime (fromGregorian 2026 10 17) (21 * 3600 + 14 * 60 + 3.512)
+        , duration = 24.731
+        , wpm = 38.81
+        , backspaces = 2
+        , solution = "function fizzBuzz(n) {\n  return n;\n}"
+        }
+
+  , "the bank's fizzBuzz is the fizzBuzz Puzzle the game has always played" ~: do
+      lookupPuzzle "fizzBuzz" @?= Just fizzBuzz
+
+  , "the bank is sorted by identity, with no identity twice" ~: do
+      let ids = map (.identity) (NonEmpty.toList bank)
+      ids @?= sort ids
+      length ids @?= length (NonEmpty.nub (NonEmpty.fromList ids))
+
+  , "a Puzzle file parses, its values as JSON" ~: do
+      fmap (.tests) (parsesTo sampleFile) @?= Right
+        [ PuzzleTest { args = [Number 2], expected = Number 4 }
+        , PuzzleTest
+            { args = [Array [Number 1, Number 2.5], Object (KeyMap.fromList [("a", String "b")]), Bool True]
+            , expected = String "x" }
+        ]
+      fmap (\p -> (p.identity, p.function, p.signature, p.prompt, p.reference)) (parsesTo sampleFile)
+        @?= Right ("double", "double", "double(x)", "Return x times two.", "function double(x) { return x * 2; }")
+
+  , "a Puzzle file missing a key fails, naming it" ~: do
+      failsMentioning "reference" (parsesTo (filter (not . T.isPrefixOf "reference") sampleFile))
+
+  , "a Puzzle file with a key the format doesn't know fails, naming it" ~: do
+      failsMentioning "difficulty" (parsesTo (sampleFile <> ["difficulty = 3"]))
+
+  , "a test missing its expected value fails" ~: do
+      failsMentioning "expected" (parsesTo (filter (/= "expected = 4") sampleFile))
+
+  , "a Puzzle file that isn't TOML fails" ~: do
+      assertBool "should fail" (isLeft (parsesTo (sampleFile <> ["prompt = \"unterminated"])))
+
+  , "a date is not a JSON value" ~: do
+      assertBool "should fail" (isLeft (parsesTo (map (\l -> if l == "expected = 4" then "expected = 2026-01-01" else l) sampleFile)))
+
+  , "the bank takes each identity from its file name and names a broken file" ~: do
+      fmap (fmap (.identity)) (parseBank [("b.toml", T.unlines sampleFile), ("a.toml", T.unlines sampleFile)])
+        @?= Right ("a" NonEmpty.:| ["b"])
+      case parseBank [("a.toml", T.unlines sampleFile), ("broken.toml", "function = ")] of
+        Left e -> assertBool ("error should name the file: " <> e) ("broken.toml" `isInfixOf` e)
+        Right _ -> assertFailure "expected an error"
+      assertBool "an empty bank should fail" (isLeft (parseBank []))
 
   , "a Run that hasn't passed has no record" ~: do
       runRecord fizzBuzz (run [Edited (at 0) "f", Pressed Character]) @?= Nothing
