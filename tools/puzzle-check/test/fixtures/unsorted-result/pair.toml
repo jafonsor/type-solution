@@ -1,0 +1,14 @@
+function = "pair"
+signature = "pair(x, y)"
+prompt = "Return {b: x, a: y}."
+reference = '''
+function pair(x, y) {
+  // Builds the object with its keys out of sorted order on purpose.
+  const result = { b: x, a: y };
+  return result;
+}
+'''
+
+[[tests]]
+args = [1, 2]
+expected = { a = 2, b = 1 }

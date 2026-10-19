@@ -131,12 +131,23 @@ export function lengthProblems(reference) {
 
 // * Running the tests
 
-// The request the browser sends (Common.Run.checkRequest).
+// A JSON value with every object's keys sorted, arrays kept in order: the
+// order aeson's KeyMap gives them (Text's order, which for these keys is
+// JavaScript's default string sort; they differ only past U+FFFF).
+export const sortKeys = (v) =>
+  Array.isArray(v) ? v.map(sortKeys)
+  : v !== null && typeof v === "object"
+    ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])]))
+    : v;
+
+// The request the browser sends (Common.Run.checkRequest). The app reads the
+// TOML into sorted maps, so object keys reach the runner sorted, not in the
+// file's order; the check sends them the same way.
 export const checkRequest = (puzzle, code) =>
   JSON.stringify({
     code,
     fn: puzzle.function,
-    tests: puzzle.tests.map((t) => ({ args: t.args, expected: t.expected })),
+    tests: puzzle.tests.map((t) => ({ args: sortKeys(t.args), expected: sortKeys(t.expected) })),
   });
 
 // Runs one request through the runner script in a fresh worker, as the

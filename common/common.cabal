@@ -223,6 +223,8 @@ test-suite common-test
                     , aeson
                     , bytestring
                     , common
+                    , directory
+                    , filepath
                     , HUnit
                     , text
                     , time

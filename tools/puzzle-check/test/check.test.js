@@ -117,6 +117,28 @@ test("the runner script gets the browser's request and sends its reply", async (
   });
 });
 
+test("a result whose object keys aren't sorted passes against a sorted expected value", async () => {
+  const { ok, failures } = await checkBank(fixture("unsorted-result"));
+  assert.deepEqual(failures, []);
+  assert.equal(ok, true);
+});
+
+test("a result that depends on the arguments' key order fails, as in the browser", async () => {
+  // The file lists {b, a}; the app sends {a, b}, so Object.keys gives ["a","b"].
+  const { ok, failures } = await checkBank(fixture("argument-key-order"));
+  assert.equal(ok, false);
+  assert.equal(failures.length, 1);
+  assert.deepEqual(failures[0].problems, ['test 1 failed: keys({"b":1,"a":2}) expected ["b","a"], got ["a","b"]']);
+});
+
+test("the request sends object keys sorted, arrays in order, as the app does", () => {
+  const puzzle = { function: "f", tests: [{ args: [{ b: 1, a: { d: [{ y: 1, x: 2 }], c: 3 } }], expected: { z: 1, _: 2, B: 3 } }] };
+  assert.equal(
+    checkRequest(puzzle, ""),
+    '{"code":"","fn":"f","tests":[{"args":[{"a":{"c":3,"d":[{"x":2,"y":1}]},"b":1}],"expected":{"B":3,"_":2,"z":1}}]}',
+  );
+});
+
 test("the command passes on today's bank and prints the symbol report", async () => {
   const { stdout } = await run(process.execPath, [join(here, "..", "check.js")]);
   assert.match(stdout, /OK: all \d+ Puzzle file\(s\) pass\./);

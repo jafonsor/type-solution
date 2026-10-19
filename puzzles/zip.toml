@@ -1,0 +1,30 @@
+function = "zip"
+signature = "zip(a, b)"
+prompt = """
+Pair up the items of two lists by position, stopping at the end of the \
+shorter list. For example, zip([1,2,3], ["a","b"]) → [[1,"a"],[2,"b"]]."""
+
+reference = '''
+function zip(a, b) {
+  const n = Math.min(a.length, b.length);
+  return a
+    .slice(0, n)
+    .map((item, i) => [item, b[i]]);
+}
+'''
+
+[[tests]]
+args = [[1, 2, 3], ["a", "b", "c"]]
+expected = [[1, "a"], [2, "b"], [3, "c"]]
+
+[[tests]]
+args = [[1, 2, 3], ["a", "b"]]
+expected = [[1, "a"], [2, "b"]]
+
+[[tests]]
+args = [[true], [false, true]]
+expected = [[true, false]]
+
+[[tests]]
+args = [[], [1]]
+expected = []

@@ -12,7 +12,9 @@ import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as T
 import Data.Time (UTCTime (..), addUTCTime, fromGregorian)
+import System.Directory (listDirectory)
 import System.Exit (exitFailure)
+import System.FilePath (dropExtension, takeExtension)
 import Test.HUnit
 
 import Common.Bank
@@ -208,6 +210,17 @@ suite = TestList
       ids @?= sort ids
       length ids @?= length (NonEmpty.nub (NonEmpty.fromList ids))
 
+  , "the bank holds one Puzzle for every file in puzzles/" ~: do
+      -- cabal runs the tests in common/. A dev build misses a newly added
+      -- file until a common module is touched (see Common.Bank).
+      files <- listDirectory "../puzzles"
+      let fromFiles = sort [T.pack (dropExtension f) | f <- files, takeExtension f == ".toml"]
+      map (.identity) (NonEmpty.toList bank) @?= fromFiles
+
+  , "no Puzzle's prompt starts or ends with whitespace" ~: do
+      let untrimmed = [p.identity | p <- NonEmpty.toList bank, T.strip p.prompt /= p.prompt]
+      untrimmed @?= []
+
   , "a Puzzle file parses, its values as JSON" ~: do
       fmap (.tests) (parsesTo sampleFile) @?= Right
         [ PuzzleTest { args = [Number 2], expected = Number 4 }
@@ -252,6 +265,15 @@ suite = TestList
   , "the check request carries the code, the function name and the tests" ~: do
       let req = decode (LBS.fromStrict (T.encodeUtf8 (checkRequest fizzBuzz "let x"))) :: Maybe Value
       fmap keys req @?= Just ["code", "fn", "tests"]
+
+  , "the check request sends object keys sorted, arrays in order" ~: do
+      -- The runner and the Puzzle bank check both rely on this order.
+      let obj kvs = Object (KeyMap.fromList [(Key.fromText k, v) | (k, v) <- kvs])
+          p = fizzBuzz { tests =
+                [ PuzzleTest
+                    { args = [obj [("b", Number 1), ("a", Array [obj [("y", Number 1), ("x", Number 2)]])]]
+                    , expected = obj [("z", Number 1), ("_", Number 2), ("B", Number 3)] } ] }
+      checkRequest p "" @?= "{\"code\":\"\",\"fn\":\"fizzBuzz\",\"tests\":[{\"args\":[{\"a\":[{\"x\":2,\"y\":1}],\"b\":1}],\"expected\":{\"B\":3,\"_\":2,\"z\":1}}]}"
 
   , "a results reply parses" ~: do
       parseReply "{\"kind\":\"results\",\"results\":[{\"pass\":true,\"got\":\"\\\"Fizz\\\"\"}]}"

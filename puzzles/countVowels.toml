@@ -1,0 +1,31 @@
+function = "countVowels"
+signature = "countVowels(text)"
+prompt = """
+Count the vowels a, e, i, o and u in the text, upper or lower case. \
+For example, countVowels("Hello World") → 3."""
+
+reference = '''
+function countVowels(text) {
+  let count = 0;
+  for (const c of text.toLowerCase()) {
+    if ('aeiou'.includes(c)) count++;
+  }
+  return count;
+}
+'''
+
+[[tests]]
+args = ["Hello World"]
+expected = 3
+
+[[tests]]
+args = ["AEIOU aeiou"]
+expected = 10
+
+[[tests]]
+args = ["rhythm"]
+expected = 0
+
+[[tests]]
+args = [""]
+expected = 0

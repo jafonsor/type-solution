@@ -1,0 +1,28 @@
+function = "countWords"
+signature = "countWords(text)"
+prompt = """
+Count how often each word appears in a text of lower-case words separated \
+by single spaces, as an object with the words as keys. For example, \
+countWords("to be or not to be") → {to: 2, be: 2, or: 1, not: 1}."""
+
+reference = '''
+function countWords(text) {
+  const counts = {};
+  for (const word of text.split(" ")) {
+    counts[word] = (counts[word] || 0) + 1;
+  }
+  return counts;
+}
+'''
+
+[[tests]]
+args = ["to be or not to be"]
+expected = { to = 2, be = 2, or = 1, not = 1 }
+
+[[tests]]
+args = ["hello"]
+expected = { hello = 1 }
+
+[[tests]]
+args = ["b a b a c"]
+expected = { b = 2, a = 2, c = 1 }

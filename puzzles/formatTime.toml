@@ -1,0 +1,25 @@
+function = "formatTime"
+signature = "formatTime(seconds)"
+prompt = """
+Format a whole number of seconds as minutes and seconds, with the seconds \
+always two digits. For example, formatTime(125) → "2:05"."""
+
+reference = '''
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+'''
+
+[[tests]]
+args = [125]
+expected = "2:05"
+
+[[tests]]
+args = [59]
+expected = "0:59"
+
+[[tests]]
+args = [600]
+expected = "10:00"

@@ -1,0 +1,29 @@
+function = "clamp"
+signature = "clamp(value, min, max)"
+prompt = """
+Return the value if it lies between min and max, otherwise the nearer of \
+min or max. For example, clamp(15, 0, 10) → 10."""
+
+reference = '''
+function clamp(value, min, max) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+'''
+
+[[tests]]
+args = [15, 0, 10]
+expected = 10
+
+[[tests]]
+args = [-3, 0, 10]
+expected = 0
+
+[[tests]]
+args = [7, 0, 10]
+expected = 7
+
+[[tests]]
+args = [10, 0, 10]
+expected = 10

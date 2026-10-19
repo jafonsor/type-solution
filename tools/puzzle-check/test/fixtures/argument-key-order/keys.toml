@@ -1,0 +1,14 @@
+function = "keys"
+signature = "keys(obj)"
+prompt = "Return the object's keys."
+reference = '''
+function keys(obj) {
+  // Depends on the order the argument's keys arrive in, which the file
+  // order doesn't decide: the app sends them sorted.
+  return Object.keys(obj);
+}
+'''
+
+[[tests]]
+args = [{ b = 1, a = 2 }]
+expected = ["b", "a"]

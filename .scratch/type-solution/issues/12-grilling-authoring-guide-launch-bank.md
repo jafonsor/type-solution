@@ -36,3 +36,7 @@ What do coding agents get told when writing Puzzles, beyond the file format sett
 **Accepting Puzzles.** The agent first reads the existing `puzzles/` names and prompts and skips near-duplicates. It adds Puzzles in batches of ~10. The reference and length checks must pass. The human skims each batch (prompt plus reference) before it's committed.
 
 **Weak-key Puzzle choice** (the map's deferred fog) is ruled out of scope for the MVP. Random choice ships; with ~50 Puzzles and 20-Run stats the data is thin, and the weak-key lists already show players their weak keys.
+
+## Comments
+
+- The human-skim step was dropped in favour of committing a batch once the Puzzle bank check passes and reviewing Puzzles afterwards (decided 2026-10-18 while implementing the MVP spec).

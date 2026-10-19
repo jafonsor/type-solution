@@ -7,6 +7,21 @@
 //                or {kind: "error", message}
 const show = (v) => (v === undefined ? "undefined" : JSON.stringify(v));
 
+// A pass compares results as JSON with object keys sorted (arrays keep their
+// order). The app's request sorts object keys (aeson), so `expected` carries
+// no key order, and a Solution's key order must not decide a pass.
+const sortKeys = (v) =>
+  Array.isArray(v) ? v.map(sortKeys)
+  : v !== null && typeof v === "object"
+    ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])]))
+    : v;
+// `expected` is JSON, so a result that isn't (undefined, a function) fails.
+const same = (got, expected) => {
+  const g = show(got);
+  return g !== undefined && g !== "undefined" &&
+    JSON.stringify(sortKeys(JSON.parse(g))) === JSON.stringify(sortKeys(expected));
+};
+
 self.onmessage = (e) => {
   const reply = (r) => postMessage(JSON.stringify(r));
   const { code, fn, tests } = JSON.parse(e.data);
@@ -26,7 +41,7 @@ self.onmessage = (e) => {
     results: tests.map(({ args, expected }) => {
       try {
         const got = f(...structuredClone(args));
-        return { pass: show(got) === show(expected), got: show(got) };
+        return { pass: same(got, expected), got: show(got) };
       } catch (err) {
         return { pass: false, got: String(err) };
       }
