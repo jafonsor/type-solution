@@ -1,0 +1,30 @@
+function = "abbreviate"
+signature = "abbreviate(word)"
+prompt = """
+Shorten a word to its first letter, the number of letters between the first \
+and the last, and its last letter; a word of three letters or fewer stays as \
+it is. For example, abbreviate("internationalization") → "i18n"."""
+
+reference = '''
+function abbreviate(word) {
+  if (word.length <= 3) return word;
+  const middle = word.length - 2;
+  return `${word[0]}${middle}${word[word.length - 1]}`;
+}
+'''
+
+[[tests]]
+args = ["internationalization"]
+expected = "i18n"
+
+[[tests]]
+args = ["localization"]
+expected = "l10n"
+
+[[tests]]
+args = ["four"]
+expected = "f2r"
+
+[[tests]]
+args = ["cat"]
+expected = "cat"

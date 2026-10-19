@@ -1,0 +1,27 @@
+function = "scale"
+signature = "scale(nums, factor)"
+prompt = """
+Multiply every number in a list by the factor. For example, \
+scale([1,2,3], 10) → [10,20,30]."""
+
+reference = '''
+function scale(nums, factor) {
+  const scaled = [];
+  for (const n of nums) {
+    scaled.push(n * factor);
+  }
+  return scaled;
+}
+'''
+
+[[tests]]
+args = [[1, 2, 3], 10]
+expected = [10, 20, 30]
+
+[[tests]]
+args = [[4, -2, 0], 3]
+expected = [12, -6, 0]
+
+[[tests]]
+args = [[7, 8], -1]
+expected = [-7, -8]

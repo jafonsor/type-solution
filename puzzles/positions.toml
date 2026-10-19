@@ -1,0 +1,27 @@
+function = "positions"
+signature = "positions(items, value)"
+prompt = """
+List the positions, counting from 0, where the value appears in a list; [] \
+if it never does. For example, positions(["a","b","a"], "a") → [0,2]."""
+
+reference = '''
+function positions(items, value) {
+  const found = [];
+  items.forEach((item, i) => {
+    if (item === value) found.push(i);
+  });
+  return found;
+}
+'''
+
+[[tests]]
+args = [["a", "b", "a"], "a"]
+expected = [0, 2]
+
+[[tests]]
+args = [[3, 1, 3, 3], 3]
+expected = [0, 2, 3]
+
+[[tests]]
+args = [["x", "y"], "z"]
+expected = []

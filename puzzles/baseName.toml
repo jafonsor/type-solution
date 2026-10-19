@@ -1,0 +1,31 @@
+function = "baseName"
+signature = "baseName(path)"
+prompt = """
+Return the file name at the end of a /-separated path, without its \
+extension (from the last dot on); a name with no dot stays whole. \
+For example, baseName("/home/ada/notes.txt") → "notes"."""
+
+reference = '''
+function baseName(path) {
+  const parts = path.split('/');
+  const file = parts[parts.length - 1];
+  const dot = file.lastIndexOf('.');
+  return dot === -1 ? file : file.slice(0, dot);
+}
+'''
+
+[[tests]]
+args = ["/home/ada/notes.txt"]
+expected = "notes"
+
+[[tests]]
+args = ["backups/site.tar.gz"]
+expected = "site.tar"
+
+[[tests]]
+args = ["/usr/bin/node"]
+expected = "node"
+
+[[tests]]
+args = ["readme.md"]
+expected = "readme"

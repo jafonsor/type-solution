@@ -1,0 +1,29 @@
+function = "rotate"
+signature = "rotate(items, k)"
+prompt = """
+Move the first k items of a list to its end, where k is from 0 up to the \
+list's length. For example, rotate([1,2,3,4,5], 2) → [3,4,5,1,2]."""
+
+reference = '''
+function rotate(items, k) {
+  const front = items.slice(0, k);
+  const back = items.slice(k);
+  return [...back, ...front];
+}
+'''
+
+[[tests]]
+args = [[1, 2, 3, 4, 5], 2]
+expected = [3, 4, 5, 1, 2]
+
+[[tests]]
+args = [["a", "b", "c"], 1]
+expected = ["b", "c", "a"]
+
+[[tests]]
+args = [[1, 2, 3], 0]
+expected = [1, 2, 3]
+
+[[tests]]
+args = [[1, 2, 3], 3]
+expected = [1, 2, 3]

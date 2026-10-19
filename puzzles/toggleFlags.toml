@@ -1,0 +1,28 @@
+function = "toggleFlags"
+signature = "toggleFlags(flags, names)"
+prompt = """
+Return a copy of an object of true/false flags with each named flag \
+flipped; a named flag that is missing counts as false. For example, \
+toggleFlags({dark: false, sound: true}, ["dark"]) → {dark: true, sound: true}."""
+
+reference = '''
+function toggleFlags(flags, names) {
+  const result = { ...flags };
+  for (const name of names) {
+    result[name] = !result[name];
+  }
+  return result;
+}
+'''
+
+[[tests]]
+args = [{ dark = false, sound = true }, ["dark"]]
+expected = { dark = true, sound = true }
+
+[[tests]]
+args = [{ a = true, b = true }, ["a", "b"]]
+expected = { a = false, b = false }
+
+[[tests]]
+args = [{ wifi = true }, ["bluetooth"]]
+expected = { wifi = true, bluetooth = true }

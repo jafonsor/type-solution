@@ -1,0 +1,25 @@
+function = "wrapTag"
+signature = "wrapTag(tag, text)"
+prompt = """
+Wrap the text in an opening and a closing HTML tag with the given name. \
+For example, wrapTag("b", "hi") → "<b>hi</b>"."""
+
+reference = '''
+function wrapTag(tag, text) {
+  const open = `<${tag}>`;
+  const close = `</${tag}>`;
+  return open + text + close;
+}
+'''
+
+[[tests]]
+args = ["b", "hi"]
+expected = "<b>hi</b>"
+
+[[tests]]
+args = ["p", "Hello, world"]
+expected = "<p>Hello, world</p>"
+
+[[tests]]
+args = ["em", "now"]
+expected = "<em>now</em>"

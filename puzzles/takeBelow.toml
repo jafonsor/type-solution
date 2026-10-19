@@ -1,0 +1,33 @@
+function = "takeBelow"
+signature = "takeBelow(nums, limit)"
+prompt = """
+Return the numbers from the start of a list up to, not including, the \
+first one that is limit or more; if none is, the whole list. For example, \
+takeBelow([1,4,2,9,3], 5) → [1,4,2]."""
+
+reference = '''
+function takeBelow(nums, limit) {
+  const taken = [];
+  for (const n of nums) {
+    if (n >= limit) break;
+    taken.push(n);
+  }
+  return taken;
+}
+'''
+
+[[tests]]
+args = [[1, 4, 2, 9, 3], 5]
+expected = [1, 4, 2]
+
+[[tests]]
+args = [[3, 5, 1], 5]
+expected = [3]
+
+[[tests]]
+args = [[7, 1], 5]
+expected = []
+
+[[tests]]
+args = [[1, 2], 5]
+expected = [1, 2]

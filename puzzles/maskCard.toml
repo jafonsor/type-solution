@@ -1,0 +1,30 @@
+function = "maskCard"
+signature = "maskCard(number)"
+prompt = """
+Hide every character of a card number except the last four by turning it \
+into *; a number of four characters or fewer stays as it is. For example, \
+maskCard("1234567812345678") → "************5678"."""
+
+reference = '''
+function maskCard(number) {
+  const hidden = number.length - 4;
+  if (hidden <= 0) return number;
+  return '*'.repeat(hidden) + number.slice(-4);
+}
+'''
+
+[[tests]]
+args = ["1234567812345678"]
+expected = "************5678"
+
+[[tests]]
+args = ["98765"]
+expected = "*8765"
+
+[[tests]]
+args = ["1234"]
+expected = "1234"
+
+[[tests]]
+args = ["12"]
+expected = "12"

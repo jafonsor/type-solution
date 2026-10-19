@@ -1,0 +1,33 @@
+function = "percent"
+signature = "percent(part, whole)"
+prompt = """
+Return part as a percentage of whole, rounded to the nearest whole number; \
+a whole of 0 gives 0. For example, percent(1, 3) → 33."""
+
+reference = '''
+function percent(part, whole) {
+  if (whole === 0) return 0;
+  const ratio = part / whole;
+  return Math.round(ratio * 100);
+}
+'''
+
+[[tests]]
+args = [1, 3]
+expected = 33
+
+[[tests]]
+args = [2, 3]
+expected = 67
+
+[[tests]]
+args = [7, 20]
+expected = 35
+
+[[tests]]
+args = [5, 5]
+expected = 100
+
+[[tests]]
+args = [4, 0]
+expected = 0

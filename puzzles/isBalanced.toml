@@ -1,0 +1,38 @@
+function = "isBalanced"
+signature = "isBalanced(text)"
+prompt = """
+Return true if every ( in the text is closed by a later ) and no ) comes \
+before its (; other characters don't matter. For example, \
+isBalanced("(a(b)c)") → true, and isBalanced(")(") → false."""
+
+reference = '''
+function isBalanced(text) {
+  let depth = 0;
+  for (const c of text) {
+    if (c === '(') depth++;
+    if (c === ')') depth--;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+'''
+
+[[tests]]
+args = ["(a(b)c)"]
+expected = true
+
+[[tests]]
+args = [")("]
+expected = false
+
+[[tests]]
+args = ["((x)"]
+expected = false
+
+[[tests]]
+args = ["()()"]
+expected = true
+
+[[tests]]
+args = ["no brackets"]
+expected = true

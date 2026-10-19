@@ -23,7 +23,7 @@ npm ci --prefix tools/puzzle-check && npm run check --prefix tools/puzzle-check
 
 It runs every Reference Solution through the browser's test runner, enforces the length rule, and prints the symbol report. Details: `tools/puzzle-check/README.md`.
 
-New Puzzle files and builds: a cabal dev build sees a *new* file only after a common module is touched (`touch common/src/Common/Bank.hs`); `nix build` sees only files git tracks, so `git add` it first. `cabal test common` fails if the bank and `puzzles/` differ.
+New Puzzle files and builds: a cabal dev build sees a *new* file only after `common` rebuilds, and cabal watches only the Puzzle files it saw last time and compares contents, not times, so `touch` is not enough. Remove `common`'s build record first: `rm dist-newstyle/build/*/*/common-*/cache/build`. `nix build` sees only files git tracks, so `git add` it first. `cabal test common` fails if the bank and `puzzles/` differ.
 
 ## Format
 

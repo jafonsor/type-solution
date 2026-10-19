@@ -1,0 +1,28 @@
+function = "withDefaults"
+signature = "withDefaults(options, defaults)"
+prompt = """
+Return a new object with every key of defaults and of options; where both \
+have a key, the value from options wins. For example, \
+withDefaults({size: 2}, {size: 1, color: "red"}) → {size: 2, color: "red"}."""
+
+reference = '''
+function withDefaults(options, defaults) {
+  const result = { ...defaults };
+  for (const key in options) {
+    result[key] = options[key];
+  }
+  return result;
+}
+'''
+
+[[tests]]
+args = [{ size = 2 }, { size = 1, color = "red" }]
+expected = { size = 2, color = "red" }
+
+[[tests]]
+args = [{ mute = true }, { volume = 5 }]
+expected = { mute = true, volume = 5 }
+
+[[tests]]
+args = [{}, { theme = "dark" }]
+expected = { theme = "dark" }

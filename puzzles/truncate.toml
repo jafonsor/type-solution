@@ -1,0 +1,31 @@
+function = "truncate"
+signature = "truncate(text, max)"
+prompt = """
+Shorten a text longer than max characters to exactly max characters, the \
+last three being "..."; a text of max characters or fewer stays as it is. \
+For example, truncate("Hello world", 8) → "Hello..."."""
+
+reference = '''
+function truncate(text, max) {
+  if (text.length <= max) {
+    return text;
+  }
+  return text.slice(0, max - 3) + '...';
+}
+'''
+
+[[tests]]
+args = ["Hello world", 8]
+expected = "Hello..."
+
+[[tests]]
+args = ["The quick brown fox", 10]
+expected = "The qui..."
+
+[[tests]]
+args = ["exactly", 7]
+expected = "exactly"
+
+[[tests]]
+args = ["Hi", 5]
+expected = "Hi"

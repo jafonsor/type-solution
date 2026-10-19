@@ -1,0 +1,35 @@
+function = "range"
+signature = "range(start, end)"
+prompt = """
+List the whole numbers from start up to but not including end; if end is \
+not above start, return []. For example, range(2, 6) → [2,3,4,5]."""
+
+reference = '''
+function range(start, end) {
+  const nums = [];
+  for (let n = start; n < end; n++) {
+    nums.push(n);
+  }
+  return nums;
+}
+'''
+
+[[tests]]
+args = [2, 6]
+expected = [2, 3, 4, 5]
+
+[[tests]]
+args = [-2, 2]
+expected = [-2, -1, 0, 1]
+
+[[tests]]
+args = [0, 1]
+expected = [0]
+
+[[tests]]
+args = [5, 5]
+expected = []
+
+[[tests]]
+args = [3, 1]
+expected = []

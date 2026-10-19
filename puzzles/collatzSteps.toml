@@ -1,0 +1,33 @@
+function = "collatzSteps"
+signature = "collatzSteps(n)"
+prompt = """
+Count the steps from a whole number n of 1 or more down to 1, where each \
+step halves an even number and turns an odd one into 3 × n + 1; \
+collatzSteps(1) → 0. For example, collatzSteps(6) → 8."""
+
+reference = '''
+function collatzSteps(n) {
+  let steps = 0;
+  while (n !== 1) {
+    n = n % 2 === 0 ? n / 2 : 3 * n + 1;
+    steps++;
+  }
+  return steps;
+}
+'''
+
+[[tests]]
+args = [6]
+expected = 8
+
+[[tests]]
+args = [16]
+expected = 4
+
+[[tests]]
+args = [7]
+expected = 16
+
+[[tests]]
+args = [1]
+expected = 0

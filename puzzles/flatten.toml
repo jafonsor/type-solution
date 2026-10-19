@@ -1,0 +1,28 @@
+function = "flatten"
+signature = "flatten(lists)"
+prompt = """
+Join a list of lists into one list, in order, one level deep: items that \
+are themselves lists stay whole. For example, \
+flatten([[1,2],[3],[],[4,5]]) → [1,2,3,4,5]."""
+
+reference = '''
+function flatten(lists) {
+  const result = [];
+  for (const list of lists) {
+    result.push(...list);
+  }
+  return result;
+}
+'''
+
+[[tests]]
+args = [[[1, 2], [3], [], [4, 5]]]
+expected = [1, 2, 3, 4, 5]
+
+[[tests]]
+args = [[["a"], ["b", "c"]]]
+expected = ["a", "b", "c"]
+
+[[tests]]
+args = [[[[1], [2]], [[3]]]]
+expected = [[1], [2], [3]]

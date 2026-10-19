@@ -1,0 +1,28 @@
+function = "reverseWords"
+signature = "reverseWords(text)"
+prompt = """
+Reverse the order of the words in a text whose words are separated by \
+single spaces. For example, reverseWords("one two three") → "three two one"."""
+
+reference = '''
+function reverseWords(text) {
+  const words = text.split(" ");
+  const reversed = [];
+  for (let i = words.length - 1; i >= 0; i--) {
+    reversed.push(words[i]);
+  }
+  return reversed.join(" ");
+}
+'''
+
+[[tests]]
+args = ["one two three"]
+expected = "three two one"
+
+[[tests]]
+args = ["hello world"]
+expected = "world hello"
+
+[[tests]]
+args = ["the cat sat on"]
+expected = "on sat cat the"

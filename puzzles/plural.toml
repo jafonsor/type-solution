@@ -1,0 +1,29 @@
+function = "plural"
+signature = "plural(count, word)"
+prompt = """
+Return the count, a space and the word, adding an "s" to the word unless \
+the count is exactly 1. For example, plural(3, "cat") → "3 cats" and \
+plural(1, "cat") → "1 cat"."""
+
+reference = '''
+function plural(count, word) {
+  const suffix = count === 1 ? '' : 's';
+  return `${count} ${word}${suffix}`;
+}
+'''
+
+[[tests]]
+args = [3, "cat"]
+expected = "3 cats"
+
+[[tests]]
+args = [1, "cat"]
+expected = "1 cat"
+
+[[tests]]
+args = [0, "dog"]
+expected = "0 dogs"
+
+[[tests]]
+args = [12, "egg"]
+expected = "12 eggs"

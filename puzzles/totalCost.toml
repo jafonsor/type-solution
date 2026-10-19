@@ -1,0 +1,28 @@
+function = "totalCost"
+signature = "totalCost(cart, prices)"
+prompt = """
+A cart maps items to quantities and a price list maps items to prices in \
+cents; return the cart's total in cents, 0 for an empty cart. For example, \
+totalCost({apple: 3, pear: 2}, {apple: 50, pear: 75, fig: 90}) → 300."""
+
+reference = '''
+function totalCost(cart, prices) {
+  let total = 0;
+  for (const [item, qty] of Object.entries(cart)) {
+    total += qty * prices[item];
+  }
+  return total;
+}
+'''
+
+[[tests]]
+args = [{ apple = 3, pear = 2 }, { apple = 50, pear = 75, fig = 90 }]
+expected = 300
+
+[[tests]]
+args = [{ fig = 1 }, { apple = 50, fig = 90 }]
+expected = 90
+
+[[tests]]
+args = [{}, { apple = 50 }]
+expected = 0

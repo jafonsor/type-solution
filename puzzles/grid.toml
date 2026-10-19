@@ -1,0 +1,27 @@
+function = "grid"
+signature = "grid(rows, cols, value)"
+prompt = """
+Build a list of rows lists, each holding cols copies of the value. \
+For example, grid(2, 3, 0) → [[0,0,0],[0,0,0]]."""
+
+reference = '''
+function grid(rows, cols, value) {
+  const result = [];
+  for (let r = 0; r < rows; r++) {
+    result.push(new Array(cols).fill(value));
+  }
+  return result;
+}
+'''
+
+[[tests]]
+args = [2, 3, 0]
+expected = [[0, 0, 0], [0, 0, 0]]
+
+[[tests]]
+args = [1, 2, "x"]
+expected = [["x", "x"]]
+
+[[tests]]
+args = [3, 1, true]
+expected = [[true], [true], [true]]

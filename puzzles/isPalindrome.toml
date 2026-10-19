@@ -1,0 +1,29 @@
+function = "isPalindrome"
+signature = "isPalindrome(text)"
+prompt = """
+Return true if the text reads the same backwards as forwards, ignoring \
+upper and lower case. For example, isPalindrome("Racecar") → true."""
+
+reference = '''
+function isPalindrome(text) {
+  const lower = text.toLowerCase();
+  const reversed = lower.split("").reverse().join("");
+  return lower === reversed;
+}
+'''
+
+[[tests]]
+args = ["Racecar"]
+expected = true
+
+[[tests]]
+args = ["hello"]
+expected = false
+
+[[tests]]
+args = ["abba"]
+expected = true
+
+[[tests]]
+args = ["Ab"]
+expected = false

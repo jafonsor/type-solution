@@ -1,0 +1,31 @@
+function = "gcd"
+signature = "gcd(a, b)"
+prompt = """
+Return the greatest whole number that divides both positive whole numbers \
+a and b. For example, gcd(12, 18) → 6."""
+
+reference = '''
+function gcd(a, b) {
+  let best = 1;
+  for (let d = 1; d <= Math.min(a, b); d++) {
+    if (a % d === 0 && b % d === 0) best = d;
+  }
+  return best;
+}
+'''
+
+[[tests]]
+args = [12, 18]
+expected = 6
+
+[[tests]]
+args = [7, 5]
+expected = 1
+
+[[tests]]
+args = [20, 5]
+expected = 5
+
+[[tests]]
+args = [9, 9]
+expected = 9

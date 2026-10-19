@@ -1,0 +1,28 @@
+function = "pick"
+signature = "pick(obj, keys)"
+prompt = """
+Return a new object holding only the listed keys of obj and their values; \
+a listed key that obj lacks is left out. For example, \
+pick({a: 1, b: 2, c: 3}, ["a","c"]) → {a: 1, c: 3}."""
+
+reference = '''
+function pick(obj, keys) {
+  const picked = {};
+  for (const key of keys) {
+    if (key in obj) picked[key] = obj[key];
+  }
+  return picked;
+}
+'''
+
+[[tests]]
+args = [{ a = 1, b = 2, c = 3 }, ["a", "c"]]
+expected = { a = 1, c = 3 }
+
+[[tests]]
+args = [{ name = "Ada", age = 36, city = "London" }, ["name"]]
+expected = { name = "Ada" }
+
+[[tests]]
+args = [{ x = 1 }, ["x", "y"]]
+expected = { x = 1 }

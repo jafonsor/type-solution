@@ -1,0 +1,31 @@
+function = "topScorer"
+signature = "topScorer(scores)"
+prompt = """
+Given a non-empty object of names to distinct scores, return the name with \
+the highest score. For example, topScorer({ana: 72, bo: 91, cy: 60}) → "bo"."""
+
+reference = '''
+function topScorer(scores) {
+  let best = '';
+  for (const name in scores) {
+    if (best === '' || scores[name] > scores[best]) best = name;
+  }
+  return best;
+}
+'''
+
+[[tests]]
+args = [{ ana = 72, bo = 91, cy = 60 }]
+expected = "bo"
+
+[[tests]]
+args = [{ zed = 10, amy = 3 }]
+expected = "zed"
+
+[[tests]]
+args = [{ solo = 0 }]
+expected = "solo"
+
+[[tests]]
+args = [{ a = -5, b = -2 }]
+expected = "b"

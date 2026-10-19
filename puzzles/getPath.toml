@@ -1,0 +1,32 @@
+function = "getPath"
+signature = "getPath(obj, path)"
+prompt = """
+Follow a dot-separated path of keys into nested objects and return the \
+value at its end; every key on the path exists. For example, \
+getPath({a: {b: {c: 5}}}, "a.b.c") → 5."""
+
+reference = '''
+function getPath(obj, path) {
+  let value = obj;
+  for (const key of path.split('.')) {
+    value = value[key];
+  }
+  return value;
+}
+'''
+
+[[tests]]
+args = [{ a = { b = { c = 5 } } }, "a.b.c"]
+expected = 5
+
+[[tests]]
+args = [{ user = { name = "Ada", age = 36 } }, "user.name"]
+expected = "Ada"
+
+[[tests]]
+args = [{ x = 1 }, "x"]
+expected = 1
+
+[[tests]]
+args = [{ a = { b = { c = 1 } } }, "a.b"]
+expected = { c = 1 }

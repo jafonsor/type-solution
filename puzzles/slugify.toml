@@ -1,0 +1,32 @@
+function = "slugify"
+signature = "slugify(title)"
+prompt = """
+Turn a title into a lower-case slug: its words joined by hyphens. Words are \
+separated by spaces, sometimes several in a row or at either end. \
+For example, slugify("Hello Big  World ") → "hello-big-world"."""
+
+reference = '''
+function slugify(title) {
+  return title
+    .toLowerCase()
+    .split(' ')
+    .filter((word) => word !== '')
+    .join('-');
+}
+'''
+
+[[tests]]
+args = ["Hello Big  World "]
+expected = "hello-big-world"
+
+[[tests]]
+args = ["Type Solution"]
+expected = "type-solution"
+
+[[tests]]
+args = ["  Many   spaces here"]
+expected = "many-spaces-here"
+
+[[tests]]
+args = ["Single"]
+expected = "single"

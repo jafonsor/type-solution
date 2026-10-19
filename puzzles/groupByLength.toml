@@ -1,0 +1,30 @@
+function = "groupByLength"
+signature = "groupByLength(words)"
+prompt = """
+Group words by length, as an object whose keys are the lengths and whose \
+values list the words of that length in their original order. For example, \
+groupByLength(["cat","apple","dog"]) → {3: ["cat","dog"], 5: ["apple"]}."""
+
+reference = '''
+function groupByLength(words) {
+  const groups = {};
+  for (const word of words) {
+    const len = word.length;
+    groups[len] = groups[len] || [];
+    groups[len].push(word);
+  }
+  return groups;
+}
+'''
+
+[[tests]]
+args = [["cat", "apple", "dog"]]
+expected = { "3" = ["cat", "dog"], "5" = ["apple"] }
+
+[[tests]]
+args = [["a", "bb", "c", "dd", "eee"]]
+expected = { "1" = ["a", "c"], "2" = ["bb", "dd"], "3" = ["eee"] }
+
+[[tests]]
+args = [["solo"]]
+expected = { "4" = ["solo"] }
