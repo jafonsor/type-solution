@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { saveRun, runsKey } from "../src/storage.mjs";
+import { saveRun, loadRuns, runsKey } from "../src/storage.mjs";
 
 // A localStorage stand-in that refuses a write taking it over `quota`
 // characters (keys and values, as browsers count them).
@@ -96,4 +96,20 @@ test("stored Runs that don't read as a list are left alone", () => {
     assert.equal(saveRun(s, record(1, 5)), false);
     assert.equal(s.getItem(runsKey), bad);
   }
+});
+
+test("the stored Runs read back as the JSON text saved", () => {
+  const s = fakeStorage(1e6);
+  assert.equal(loadRuns(s), "[]");
+  saveRun(s, record(1, 5));
+  saveRun(s, record(2, 0));
+  assert.deepEqual(JSON.parse(loadRuns(s)), [record(1, 5), record(2, 0)]);
+  // What's there is handed over as it is, for Haskell to read what it can.
+  const junk = fakeStorage(1e6, { [runsKey]: "not json" });
+  assert.equal(loadRuns(junk), "not json");
+});
+
+test("storage that can't be read gives no Runs and doesn't throw", () => {
+  const blocked = { getItem() { throw new DOMException("The operation is insecure.", "SecurityError"); } };
+  assert.equal(loadRuns(blocked), "[]");
 });

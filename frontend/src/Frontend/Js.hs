@@ -2,7 +2,9 @@
 -- | The JavaScript seam: the CodeMirror shim (static/editor, loaded as
 -- @window.TypeSolution@) and the test-runner worker (static/src/js/runner.js).
 -- Reflex sees only document text, the Escape key, the key presses a Run
--- counts (with their times) and the worker's replies.
+-- counts (with their times), the worker's replies and the stored Runs (as
+-- JSON text). Storage is reached only through the shim; nothing goes over
+-- the network.
 module Frontend.Js
   ( Editor
   , createEditor
@@ -14,6 +16,7 @@ module Frontend.Js
   , random
   , syntaxError
   , saveRun
+  , loadRuns
   , Checker
   , newChecker
   , startCheck
@@ -83,6 +86,12 @@ syntaxError code = do
 -- | Keep a finished Run (as JSON) in the browser's storage.
 saveRun :: Text -> JSM ()
 saveRun json = void $ jsg ("TypeSolution" :: Text) # ("saveRun" :: Text) $ [json]
+
+-- | Every Run kept in the browser's storage, as the JSON text it holds
+-- ("[]" if none, or if storage can't be read). Read it with
+-- 'Common.History.decodeRecords'.
+loadRuns :: JSM Text
+loadRuns = (jsg ("TypeSolution" :: Text) # ("loadRuns" :: Text) $ ()) >>= fromJSValUnchecked
 
 -- | The check in flight: its worker and the callback the worker replies to.
 newtype Checker = Checker (IORef (Maybe (JSVal, Function)))

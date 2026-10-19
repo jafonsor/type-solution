@@ -187,6 +187,7 @@ library
     -- Modules exported by the library.
     exposed-modules:  Common
                       Common.Bank
+                      Common.History
                       Common.Puzzle
                       Common.Route
                       Common.Run

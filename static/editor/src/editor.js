@@ -21,6 +21,8 @@
 //   TypeSolution.syntaxError(code)  // null, or the parser's message
 //   TypeSolution.saveRun(json)      // append a finished Run to browser storage
 //                                   // (storage.mjs: what happens when it's full)
+//   TypeSolution.loadRuns()         // the stored Runs as JSON text, "[]" if none
+//                                   // or storage can't be read; never throws
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState, Prec, Compartment } from "@codemirror/state";
 import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
@@ -157,8 +159,18 @@ function saveRun(json) {
   }
 }
 
+// Reading `localStorage` itself can throw, so it's inside the try.
+function loadRuns() {
+  try {
+    return storage.loadRuns(localStorage);
+  } catch (err) {
+    console.warn("Runs not read:", err);
+    return "[]";
+  }
+}
+
 window.TypeSolution = {
-  createEditor, syntaxError, saveRun,
+  createEditor, syntaxError, saveRun, loadRuns,
   focus(element) { element.focus(); },
   random() { return Math.random(); },
 };

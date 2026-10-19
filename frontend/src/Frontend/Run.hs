@@ -16,6 +16,7 @@ import Language.Javascript.JSaddle (MonadJSM, liftJSM)
 import Reflex.Dom.Core
 
 import Common.Bank (randomPuzzle)
+import Common.History
 import Common.Puzzle
 import Common.Run hiding (Event)
 import Common.Status
@@ -47,6 +48,14 @@ runWidget workerUrl = mdo
   -- The first Puzzle is picked here, in the browser, so each visit differs.
   firstPuzzle <- liftJSM (randomPuzzle <$> random)
   dPuzzle <- holdDyn firstPuzzle ePuzzle
+
+  -- The history: the Runs stored in this browser when the page loaded, plus
+  -- each Run passed since (whether or not storage could keep it). The status
+  -- line compares a Run with the history as it was when the Run began, so a
+  -- pass never compares with its own record.
+  stored <- liftJSM (decodeRecords <$> loadRuns)
+  dHistory <- foldDyn addRecord (history stored) eRecord
+  dHistoryBefore <- holdDyn (history stored) (tag (current dHistory) ePuzzle)
 
   elClass "header" "puzzle" do
     elClass "h1" "signature" $ dynText ((.signature) <$> dPuzzle)
@@ -139,7 +148,7 @@ runWidget workerUrl = mdo
 
   elClass "div" "status" do
     elClass "span" "clock" $ dynText (secondsText <$> dElapsed)
-    elClass "span" "phase" $ dynText (statusText <$> dRun)
+    elClass "span" "phase" $ dynText (statusText <$> dPuzzle <*> dHistoryBefore <*> dRun)
 
   (eChoice, firstButton, menuBox) <- menu
 

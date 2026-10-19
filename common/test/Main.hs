@@ -19,6 +19,7 @@ import System.FilePath (dropExtension, takeExtension)
 import Test.HUnit
 
 import Common.Bank
+import Common.History
 import Common.Puzzle
 import Common.Run
 import Common.Status
@@ -33,6 +34,10 @@ t0 = UTCTime (fromGregorian 2026 1 1) 0
 
 at :: Double -> UTCTime
 at s = addUTCTime (realToFrac s) t0
+
+-- | The status line on fizzBuzz with nothing passed before.
+statusOf :: Run -> Text
+statusOf = statusText fizzBuzz (history [])
 
 run :: [Event] -> Run
 run = foldl (flip step) newRun
@@ -54,6 +59,17 @@ press = Pressed
 -- | A Run under way: started at 1 s, with "x" typed.
 typing :: [Event]
 typing = [Pressed 0 letter, Edited (at 1) "x"]
+
+-- | A stored record of a Run on the Puzzle with this identity, passed in
+-- this many seconds.
+storedRun :: Text -> Double -> RunRecord
+storedRun i secs = RunRecord
+  { puzzleIdentity = i, finishedAt = t0, duration = secs, wpm = 40, backspaces = 1
+  , solution = "", keyPresses = [] }
+
+-- | A Run on fizzBuzz passed in this many seconds, with one word typed.
+passedIn :: Double -> Run
+passedIn secs = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1, CheckFinished (at secs) 1 allPass]
 
 pass, failWith :: TestResult
 pass = TestResult { passed = True, got = "\"x\"" }
@@ -171,7 +187,7 @@ suite = TestList
   , "Esc before the first keystroke skips the Puzzle" ~: do
       let r = run [Escaped (at 1)]
       r.phase @?= Skipped
-      statusText r @?= "Skipped."
+      statusOf r @?= "Skipped."
       elapsed (at 5) r @?= 0
 
   , "after a skip, Esc and typing do nothing" ~: do
@@ -181,7 +197,7 @@ suite = TestList
   , "Esc while typing pauses the Run and stops the clock" ~: do
       let r = run (typing <> [Escaped (at 4)])
       r.phase @?= Paused
-      statusText r @?= "Paused. Esc to carry on."
+      statusOf r @?= "Paused. Esc to carry on."
       elapsed (at 4) r @?= 3
       elapsed (at 60) r @?= 3
 
@@ -204,7 +220,7 @@ suite = TestList
       c.phase @?= Checking
       let o = SyntaxError "Unexpected token"
           f = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o, Escaped (at 3), Escaped (at 4)])
-      (f.phase, statusText f) @?= (Checked, "doesn't parse yet")
+      (f.phase, statusOf f) @?= (Checked, "doesn't parse yet")
 
   , "edits and key presses are ignored while paused" ~: do
       let paused = run (typing <> [Escaped (at 4)])
@@ -226,7 +242,7 @@ suite = TestList
       elapsed (at 99) r @?= 20
       wordsPerMinute r @?= Just 15
       fmap (\rr -> (rr.duration, rr.wpm)) (runRecord fizzBuzz r) @?= Just (20, 15)
-      statusText r @?= "Passed in 20.0 s, 15 wpm, 0 backspaces."
+      statusOf r @?= "Passed in 20.0 s, 15 wpm, 0 backspaces. First time on this Puzzle."
 
   , "a check passing during a Pause ends the Run when the Pause began" ~: do
       let r = run (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 allPass])
@@ -244,9 +260,9 @@ suite = TestList
           r = run (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 o])
       r.phase @?= Paused
       r.outcome @?= Just o
-      statusText r @?= "Paused. Esc to carry on."
+      statusOf r @?= "Paused. Esc to carry on."
       let resumed = step (Escaped (at 4)) r
-      (resumed.phase, statusText resumed) @?= (Checked, "1/2 tests pass")
+      (resumed.phase, statusOf resumed) @?= (Checked, "1/2 tests pass")
 
   , "a check that starts during a Pause counts too" ~: do
       let r = run (typing <> [Escaped (at 2), CheckStarted 1, CheckFinished (at 2.5) 1 allPass])
@@ -281,10 +297,10 @@ suite = TestList
   -- The status line
 
   , "the status line says what the Run is doing" ~: do
-      statusText newRun @?= "Start typing: the clock starts on your first keystroke."
-      statusText (run typing) @?= ""
-      statusText (run (typing <> [CheckStarted 1])) @?= "checking…"
-      let after o = statusText (run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o]))
+      statusOf newRun @?= "Start typing: the clock starts on your first keystroke."
+      statusOf (run typing) @?= ""
+      statusOf (run (typing <> [CheckStarted 1])) @?= "checking…"
+      let after o = statusOf (run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o]))
       after (Results [pass, failWith, failWith]) @?= "1/3 tests pass"
       after (SyntaxError "x") @?= "doesn't parse yet"
       after (Crashed "x") @?= "crashed"
@@ -293,14 +309,79 @@ suite = TestList
   , "the pass line gives the time, words per minute and backspaces, and no Esc hint" ~: do
       let r = run [ Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, Pressed 0 Backspace
                   , CheckStarted 1, CheckFinished (at 12.34) 1 allPass ]
-      statusText r @?= "Passed in 12.3 s, 5 wpm, 1 backspace."
+      statusOf r @?= "Passed in 12.3 s, 5 wpm, 1 backspace. First time on this Puzzle."
       let r2 = run [ Edited (at 0) "f", Pressed 0 Backspace, Pressed 0 Backspace, CheckStarted 1, CheckFinished (at 6) 1 allPass ]
-      statusText r2 @?= "Passed in 6.0 s, 0 wpm, 2 backspaces."
+      statusOf r2 @?= "Passed in 6.0 s, 0 wpm, 2 backspaces. First time on this Puzzle."
 
   , "times read in seconds to a tenth" ~: do
       secondsText 0 @?= "0.0 s"
       secondsText 1 @?= "1.0 s"
       secondsText 75.25 @?= "75.2 s"
+
+  -- Personal bests
+
+  , "the Personal best is the fastest passed Run on the Puzzle, its words per minute and backspaces with it" ~: do
+      let best = (storedRun "fizzBuzz" 12.3) { wpm = 42, backspaces = 3 }
+          h = history [storedRun "fizzBuzz" 14, storedRun "other" 5, best, storedRun "fizzBuzz" 15.1]
+      personalBest "fizzBuzz" h @?= Just best
+      personalBest "nothingPassed" h @?= Nothing
+      -- Of two equally fast, the earlier.
+      let first = (storedRun "fizzBuzz" 9) { wpm = 1 }
+      fmap (.wpm) (personalBest "fizzBuzz" (history [first, (storedRun "fizzBuzz" 9) { wpm = 2 }])) @?= Just 1
+
+  , "other Puzzles' Runs are ignored" ~: do
+      let h = history [storedRun "other" 1, storedRun "fizzBuzzAgain" 2]
+      personalBest "fizzBuzz" h @?= Nothing
+      statusText fizzBuzz h (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. First time on this Puzzle."
+
+  , "a pass with no earlier pass on the Puzzle is the first time" ~: do
+      statusText fizzBuzz (history []) (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. First time on this Puzzle."
+
+  , "a pass faster than the best is a new best, naming the old one" ~: do
+      let h = history [storedRun "fizzBuzz" 15.1, storedRun "fizzBuzz" 14, storedRun "other" 3]
+      statusText fizzBuzz h (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. New best (was 14.0 s)."
+
+  , "a pass slower than the best gives the best" ~: do
+      let h = history [storedRun "fizzBuzz" 12.3, storedRun "fizzBuzz" 14]
+      statusText fizzBuzz h (passedIn 15.1) @?= "Passed in 15.1 s, 4 wpm, 0 backspaces. Best: 12.3 s."
+
+  , "a pass as fast as the best is not a new best" ~: do
+      let h = history [storedRun "fizzBuzz" 12.3]
+      statusText fizzBuzz h (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. Best: 12.3 s."
+
+  , "bests compare the stored seconds, not the times shown to a tenth" ~: do
+      let h = history [storedRun "fizzBuzz" 12.34]
+      statusText fizzBuzz h (passedIn 12.26) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. New best (was 12.3 s)."
+      statusText fizzBuzz h (passedIn 12.341) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. Best: 12.3 s."
+
+  , "the best is never shown during a Run" ~: do
+      let h = history [storedRun "fizzBuzz" 1]
+          during = [ newRun, run typing, run (typing <> [CheckStarted 1])
+                   , run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 TimedOut])
+                   , run (typing <> [Escaped (at 2)]), run [Escaped (at 1)] ]
+      map (statusText fizzBuzz h) during @?= map statusOf during
+
+  , "a passed Run's record, once added, is what the next Run compares with" ~: do
+      let pass1 = [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1, CheckFinished (at 14) 1 allPass]
+          h = foldr addRecord (history []) (records pass1)
+      statusText fizzBuzz h (passedIn 15.1) @?= "Passed in 15.1 s, 4 wpm, 0 backspaces. Best: 14.0 s."
+      statusText fizzBuzz h (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. New best (was 14.0 s)."
+      -- Records added in order, oldest first.
+      let h2 = addRecord (storedRun "fizzBuzz" 10) (addRecord (storedRun "fizzBuzz" 20) (history []))
+      h2 @?= history [storedRun "fizzBuzz" 20, storedRun "fizzBuzz" 10]
+
+  , "stored records decode one by one: old, stripped and full records read, a broken one is skipped" ~: do
+      let old = "{\"puzzle\":\"fizzBuzz\",\"finishedAt\":\"2026-10-17T21:14:03.512Z\",\"seconds\":99.9,\"wordsPerMinute\":10,\"backspaces\":0,\"solution\":\"x\"}"
+          full = "{\"backspaces\":1,\"finishedAt\":\"2026-10-19T10:00:00Z\",\"gaps\":[0,120],\"keys\":\"A \",\"puzzle\":\"other\",\"seconds\":4,\"solution\":\"A \",\"wordsPerMinute\":15}"
+          stripped = "{\"backspaces\":1,\"finishedAt\":\"2026-10-19T10:00:00Z\",\"puzzle\":\"fizzBuzz\",\"seconds\":12.5,\"solution\":\"A \",\"wordsPerMinute\":15}"
+          badKeys = "{\"backspaces\":1,\"finishedAt\":\"2026-10-19T10:00:00Z\",\"keys\":\"ab\",\"puzzle\":\"fizzBuzz\",\"seconds\":1,\"solution\":\"\",\"wordsPerMinute\":15}"
+          rs = decodeRecords ("[" <> T.intercalate "," [old, "5", full, "{\"puzzle\":\"fizzBuzz\"}", stripped, "null", badKeys, "\"junk\""] <> "]")
+      map (\r -> (r.puzzleIdentity, r.duration, length r.keyPresses)) rs
+        @?= [("fizzBuzz", 99.9, 0), ("other", 4, 2), ("fizzBuzz", 12.5, 0)]
+      fmap (.duration) (personalBest "fizzBuzz" (history rs)) @?= Just 12.5
+      decodeRecords "[]" @?= []
+      decodeRecords "not json" @?= []
+      decodeRecords "{\"puzzle\":\"fizzBuzz\"}" @?= []
 
   , "a space or Enter straight after a character ends a word" ~: do
       let r = run (map (Pressed 0) [letter, Space, Space, letter, letter, Enter, Enter, letter])
