@@ -1,0 +1,22 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function double(x) {
+  let a = x;
+  a = a + 0;
+  a = a + 0;
+  a = a + 0;
+  a = a + 0;
+  a = a + 0;
+  a = a + 0;
+  a = a + 0;
+  a = a + 0;
+  a = a + 0;
+  return a * 2;
+}
+'''
+
+[[tests]]
+args = [2]
+expected = 4

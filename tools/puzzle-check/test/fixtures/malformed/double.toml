@@ -1,0 +1,5 @@
+function = "double"
+signature = "double(x)"
+prompt = """
+Return x times two.
+reference = "unterminated

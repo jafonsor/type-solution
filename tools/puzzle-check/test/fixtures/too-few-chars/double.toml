@@ -1,0 +1,13 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function double(x) {
+  const y = x * 2;
+  return y;
+}
+'''
+
+[[tests]]
+args = [2]
+expected = 4

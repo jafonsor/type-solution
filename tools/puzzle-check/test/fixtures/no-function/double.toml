@@ -1,0 +1,14 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function triple(x) {
+  const thrice = x * 3;
+  // Defines triple, not double, so the tests can't call it.
+  return thrice;
+}
+'''
+
+[[tests]]
+args = [2]
+expected = 4

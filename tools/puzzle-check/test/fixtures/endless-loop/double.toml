@@ -1,0 +1,14 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function double(x) {
+  let twice = x * 2;
+  while (twice === twice) { twice = twice + 0; } // never ends
+  return twice;
+}
+'''
+
+[[tests]]
+args = [2]
+expected = 4

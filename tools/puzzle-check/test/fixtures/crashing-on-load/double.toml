@@ -1,0 +1,13 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function double(x) {
+  return x * 2;
+}
+throw new Error("this Reference Solution crashes before any test runs");
+'''
+
+[[tests]]
+args = [2]
+expected = 4

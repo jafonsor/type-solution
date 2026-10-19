@@ -1,0 +1,16 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function double(x) {
+  // This comment makes the Reference Solution far too long to type in one short Run.
+  // This comment makes the Reference Solution far too long to type in one short Run.
+  // This comment makes the Reference Solution far too long to type in one short Run.
+  // This comment makes the Reference Solution far too long to type in one short Run.
+  return x * 2;
+}
+'''
+
+[[tests]]
+args = [2]
+expected = 4

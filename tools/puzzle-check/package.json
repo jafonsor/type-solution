@@ -1,0 +1,15 @@
+{
+  "name": "type-solution-puzzle-check",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The Puzzle bank check: runs every Reference Solution in puzzles/ through static/src/js/runner.js and checks its length.",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "check": "node check.js",
+    "test": "node --test test/check.test.js"
+  },
+  "dependencies": {
+    "smol-toml": "1.9.0"
+  }
+}

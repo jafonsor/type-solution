@@ -1,0 +1,14 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function double(x) {
+  const twice = x * 2;
+  throw new Error("this Reference Solution always crashes");
+  return twice;
+}
+'''
+
+[[tests]]
+args = [2]
+expected = 4
