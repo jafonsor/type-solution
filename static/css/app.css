@@ -1,0 +1,59 @@
+/* Colours are variables so the page and the editor (whose CodeMirror theme
+   reads them; static/editor/src/editor.js) share the light and dark schemes. */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --line: #d2d2d7; --focus: #0071e3;
+  --bad: #b3261e; --good: #1e7d32;
+  --editor-bg: #fbfbfd; --editor-fg: #1d1d1f; --editor-cursor: #1d1d1f;
+  --editor-gutter-fg: #a1a1a6; --editor-selection: #b4d5fe; --editor-bracket: #e3e3e8;
+  --syn-keyword: #9b2393; --syn-string: #c41a16; --syn-literal: #1c00cf;
+  --syn-comment: #707f8c; --syn-function: #326d74; --syn-name: #0f68a0;
+  --syn-punctuation: #4b4b50;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1d1d1f; --fg: #f5f5f7; --muted: #a1a1a6; --line: #424245; --focus: #2997ff;
+    --bad: #f2b8b5; --good: #81c995;
+    --editor-bg: #242426; --editor-fg: #e6e6e6; --editor-cursor: #f5f5f7;
+    --editor-gutter-fg: #6e6e73; --editor-selection: #3f638b; --editor-bracket: #3a3a3c;
+    --syn-keyword: #fc5fa3; --syn-string: #fc6a5d; --syn-literal: #d0bf69;
+    --syn-comment: #7f8c98; --syn-function: #67b7a4; --syn-name: #5dd8ff;
+    --syn-punctuation: #b5b5ba;
+  }
+}
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+/* The bottom padding keeps the last of the page clear of the weak-key lines. */
+main.run { max-width: 46rem; margin: 3rem auto; padding: 0 1rem 6rem; }
+.puzzle .signature { font: 600 1.4rem ui-monospace, monospace; margin: 0 0 .25rem; }
+.puzzle .prompt { color: var(--muted); margin: 0 0 1.25rem; }
+.editor .cm-editor { border: 1px solid var(--line); border-radius: 6px; min-height: 12rem; font-size: 15px; }
+.editor .cm-editor.cm-focused { outline: 2px solid var(--focus); outline-offset: -1px; }
+.status { display: flex; gap: 1rem; margin: .75rem 0; color: var(--muted); }
+.status .clock { font-variant-numeric: tabular-nums; min-width: 4rem; color: var(--fg); }
+.feedback .failure { color: var(--bad); font-size: .95rem; margin: .25rem 0; }
+.feedback code { font: .9rem ui-monospace, monospace; }
+.menu { display: flex; gap: .5rem; margin: 0 0 .75rem; }
+.menu[hidden] { display: none; }
+.menu button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; padding: 0; cursor: pointer;
+  color: var(--fg); background: var(--editor-bg); border: 1px solid var(--line); border-radius: 6px;
+}
+.menu button:hover { border-color: var(--muted); }
+.menu button:focus-visible, .menu button:focus { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* The weak-key lists sit at the bottom of the window, below the menu and the
+   feedback, so neither can move them; each line has a fixed height, so they
+   don't move as they fill. Their text lines up with the page's column. */
+.weak-keys {
+  position: fixed; left: 0; right: 0; bottom: 0;
+  padding: .4rem max(1rem, calc((100% - 46rem) / 2));
+  background: var(--bg); border-top: 1px solid var(--line);
+}
+.weak-key-line { display: flex; align-items: center; gap: .4rem; height: 1.9rem; margin: 0; overflow: hidden; }
+.weak-key-line .label { color: var(--muted); min-width: 7rem; }
+.weak-key-line .none { color: var(--muted); }
+.weak-key-line kbd {
+  display: inline-block; min-width: 1.6rem; padding: 0 .4rem; box-sizing: border-box; text-align: center;
+  font: 600 1rem/1.4rem ui-monospace, monospace; color: var(--fg);
+  background: var(--editor-bg); border: 1px solid var(--line); border-radius: 4px;
+}
