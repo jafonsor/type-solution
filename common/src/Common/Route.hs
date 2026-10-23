@@ -28,9 +28,11 @@ checkedFullRouteEncoder = case checkEncoder fullRouteEncoder of
   Left e -> error $ show e
   Right x -> x
 
+-- | Any path no route matches is the game page. GitHub Pages serves the game
+-- under @/type-solution/@, which the frontend's router must accept.
 fullRouteEncoder
   :: Encoder (Either Text) Identity (R (FullRoute BackendRoute FrontendRoute)) PageName
 fullRouteEncoder = mkFullRouteEncoder
-  (FullRoute_Backend BackendRoute_Api :/ ())
+  (FullRoute_Frontend (ObeliskRoute_App FrontendRoute_Main) :/ ())
   (\case BackendRoute_Api -> PathSegment "api" $ unitEncoder mempty)
   (\case FrontendRoute_Main -> PathEnd $ unitEncoder mempty)

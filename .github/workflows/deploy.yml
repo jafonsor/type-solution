@@ -1,0 +1,67 @@
+# Build the game on every push to main and publish it to GitHub Pages
+# (https://jafonsor.github.io/type-solution/). A failing check or test stops
+# the run before anything is deployed.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Puzzle bank check
+        run: |
+          npm ci --prefix tools/puzzle-check
+          npm test --prefix tools/puzzle-check
+          npm run check --prefix tools/puzzle-check
+
+      # The runner starts with ~14 GB free; the Nix store needs more.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+            fallback = true
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - name: Common tests
+        run: nix build -L .#checks.x86_64-linux.common-test
+
+      - name: Build
+        run: nix build -L
+
+      - name: Export the site
+        run: tools/export-site.sh result site /type-solution/
+
+      - name: Publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site
+          publish_branch: gh-pages
+          force_orphan: true
