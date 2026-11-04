@@ -1,0 +1,114 @@
+<!doctype html>
+<!-- PROTOTYPE (throwaway): answers ticket 05, "The Language dropdown and drafts".
+     Three variants of where the Language switch sits and how it behaves, switchable with ?variant=A|B|C
+     or the bottom bar (arrows work when the editor is not focused). Nothing is saved; "tests" are faked:
+     a draft passes when it contains the word "return" (JS) or "=" (PureScript). -->
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE language dropdown</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7;--focus:#0071e3;--bad:#b3261e;--good:#1e7d32;--editor-bg:#fbfbfd}
+@media(prefers-color-scheme:dark){:root{--bg:#1d1d1f;--fg:#f5f5f7;--muted:#a1a1a6;--line:#424245;--focus:#2997ff;--bad:#f2b8b5;--good:#81c995;--editor-bg:#242426}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+main{max-width:46rem;margin:3rem auto;padding:0 1rem 7rem}
+.signature{font:600 1.4rem ui-monospace,monospace;margin:0 0 .25rem}
+.prompt{color:var(--muted);margin:0 0 1.25rem}
+textarea{width:100%;box-sizing:border-box;min-height:12rem;font:15px ui-monospace,monospace;background:var(--editor-bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:.6rem}
+textarea:focus{outline:2px solid var(--focus);outline-offset:-1px}
+.status{display:flex;gap:1rem;margin:.75rem 0;color:var(--muted);align-items:center}
+.clock{font-variant-numeric:tabular-nums;min-width:4rem;color:var(--fg)}
+select,button{font:inherit;color:var(--fg);background:var(--editor-bg);border:1px solid var(--line);border-radius:6px;padding:.25rem .5rem;cursor:pointer}
+.menu{display:flex;gap:.5rem;margin:0 0 .75rem}
+.row{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem}
+.tabs{display:flex;gap:.25rem;margin-bottom:-1px;position:relative}
+.tab{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom-color:var(--line);color:var(--muted)}
+.tab[aria-selected=true]{color:var(--fg);border-bottom-color:var(--editor-bg);font-weight:600}
+.dot{display:inline-block;width:.45rem;height:.45rem;border-radius:50%;background:var(--muted);margin-left:.35rem}
+.chip{font:600 .85rem ui-monospace,monospace;border:1px solid var(--line);border-radius:4px;padding:0 .4rem}
+.result{color:var(--good);margin:.5rem 0}
+.editorbar{display:flex;justify-content:flex-end;align-items:center;gap:.6rem;background:var(--editor-bg);border:1px solid var(--line);border-top:0;border-radius:0 0 6px 6px;padding:.1rem .4rem;font-size:.85rem}
+.editorbar select{border:0;background:none;padding:.1rem .3rem;font-size:.85rem}
+.editorbar select:hover{background:var(--line)}
+.peek{position:relative;cursor:help;width:1.2rem;height:1.2rem;line-height:1.2rem;text-align:center;border:1px solid var(--line);border-radius:50%;color:var(--muted);font-size:.8rem}
+.tip{display:none;position:absolute;left:0;bottom:1.6rem;z-index:2;text-align:left;white-space:pre;font:13px/1.4 ui-monospace,monospace;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:.5rem .7rem;box-shadow:0 2px 10px #0004}
+.peek:hover .tip,.peek:focus .tip{display:block}
+.hint{color:var(--muted);font-size:.9rem}
+.state{position:fixed;top:0;right:0;background:var(--editor-bg);border:1px solid var(--line);font:12px ui-monospace,monospace;padding:.4rem .6rem;white-space:pre;max-width:22rem;overflow:hidden}
+.bar{position:fixed;bottom:.8rem;left:50%;transform:translateX(-50%);background:#111;color:#fff;border-radius:99px;padding:.3rem .5rem;display:flex;gap:.6rem;align-items:center;box-shadow:0 2px 10px #0007}
+.bar button{background:none;color:#fff;border:0}
+[hidden]{display:none}
+</style>
+<main>
+ <header>
+  <div class="row"><h1 class="signature" id="sig"></h1><div id="slotTop"></div></div>
+  <p class="prompt">Shorten a word to its first letter, the number of letters between the first and the last, and its last letter; three letters or fewer stay as they are. For example, abbreviate("internationalization") → "i18n".</p>
+ </header>
+ <div id="slotTabs"></div>
+ <textarea id="ed" spellcheck="false" placeholder="Start typing…" style="display:block;border-bottom-left-radius:0;border-bottom-right-radius:0"></textarea>
+ <div class="editorbar"><span class="peek" tabindex="0" aria-label="Show a solution">?<span class="tip" id="tip"></span></span><span style="flex:1"></span><span class="hint">Alt+L</span><span id="slotStatus"></span></div>
+ <div class="status"><span class="clock" id="clock">0.0 s</span><span id="phase"></span></div>
+ <div class="menu"><button id="pause">Pause</button><button id="skip">Skip</button></div>
+ <div class="result" id="result"></div>
+ <p class="hint" id="kbhint"></p>
+</main>
+<div class="state" id="state"></div>
+<div class="bar"><button id="prev">←</button><span id="vlabel"></span><button id="next">→</button></div>
+<script>
+const LANGS={js:{name:"JavaScript",sig:"function abbreviate(word) {\n  if (word.length <= 3) return word;\n  const middle = word.length - 2;\n  return `${word[0]}${middle}${word[word.length - 1]}`;\n}",pass:t=>t.includes("return")},
+             purs:{name:"PureScript",sig:"abbreviate :: String -> String\nabbreviate word = ...",pass:t=>t.includes("=  ")||/word\s*=\s*\S/.test(t)}};
+const V={A:"Dropdown beside the signature",B:"Tabs above the editor",C:"Dropdown in the status line + Alt+L"};
+const q=new URLSearchParams(location.search);let variant=q.get("variant")||"A";
+const s={lang:localStorage.protoLang||"js",drafts:{},started:null,elapsed:0,paused:false,done:null};
+const $=id=>document.getElementById(id);
+function now(){return performance.now()}
+function el(){return s.started===null?0:(s.paused?s.elapsed:s.elapsed+(now()-s.t0))}
+function setLang(l){
+  s.drafts[s.lang]=$("ed").value; s.lang=l; localStorage.protoLang=l;
+  
+  render(true);$("ed").focus();
+}
+function langControl(){
+  const sel=document.createElement("select");sel.setAttribute("aria-label","Language");
+  for(const k in LANGS){const o=new Option(LANGS[k].name+(s.drafts[k]&&s.drafts[k].trim()&&k!==s.lang?" •":""),k);sel.add(o)}
+  sel.value=s.lang;sel.onchange=()=>setLang(sel.value);return sel;
+}
+function render(keepDraft){
+  const e=$("ed"); if(keepDraft)e.value=s.drafts[s.lang]??"";
+  e.disabled=!!s.done||s.paused;
+  $("sig").textContent="abbreviate(word)";
+  for(const id of["slotTop","slotTabs","slotStatus"])$(id).replaceChildren();
+  if(variant==="A")$("slotTop").append(langControl());
+  if(variant==="C")$("slotStatus").append(langControl());
+  if(variant==="B"){const t=document.createElement("div");t.className="tabs";t.setAttribute("role","tablist");
+    for(const k in LANGS){const b=document.createElement("button");b.className="tab";b.setAttribute("role","tab");b.setAttribute("aria-selected",k===s.lang);
+      b.textContent=LANGS[k].name;if(k!==s.lang&&(s.drafts[k]||"").trim()){const d=document.createElement("span");d.className="dot";d.title="Has a draft";b.append(d)}
+      b.onclick=()=>setLang(k);t.append(b)}
+    $("slotTabs").append(t)}
+  $("tip").textContent=LANGS[s.lang].sig;
+  $("kbhint").textContent=variant==="C"?"Alt+L switches Language without leaving the editor (cycles).":variant==="B"?"Alt+1 / Alt+2 pick a tab from the editor.":"Keyboard: focus the dropdown with Alt+L, arrows pick.";
+  $("phase").textContent=s.done?"Passed":s.paused?"Paused":s.started===null?"Start typing to begin":"Running";
+  $("pause").textContent=s.paused?"Resume":"Pause";$("pause").disabled=s.started===null||!!s.done;
+  $("result").textContent=s.done?`Passed in ${LANGS[s.done.lang].name}: ${(s.done.t/1000).toFixed(1)} s whole Run${s.done.switched?" (switched Language)":""}. Personal best is tracked for abbreviate · ${LANGS[s.done.lang].name}.`:"";
+  $("vlabel").textContent=`${variant} (${V[variant]})`;
+  state();
+}
+function state(){$("clock").textContent=(el()/1000).toFixed(1)+" s";
+  $("state").textContent="lang: "+s.lang+"\nrun: "+(s.done?"finished":s.paused?"paused":s.started===null?"not started":"running")+"\ndrafts: "+JSON.stringify(Object.fromEntries(Object.entries({...s.drafts,[s.lang]:$("ed").value}).map(([k,v])=>[k,v.length+" chars"])))+"\nswitched: "+!!s.switched}
+let first=null;
+$("ed").addEventListener("input",()=>{
+  if(s.started===null){s.started=now();s.t0=now()}
+  s.drafts[s.lang]=$("ed").value;
+  if(LANGS[s.lang].pass($("ed").value)){s.done={lang:s.lang,t:el(),switched:s.switched};s.paused=true;s.elapsed=el();s.paused=false;render()}
+  state()});
+const origSet=setLang;setLang=function(l){if(l!==s.lang&&s.started!==null)s.switched=true;origSet(l)};
+$("pause").onclick=()=>{if(s.paused){s.t0=now();s.paused=false}else{s.elapsed=el();s.paused=true}render()};
+$("skip").onclick=()=>{Object.assign(s,{drafts:{},started:null,elapsed:0,paused:false,done:null,switched:false});render(true)};
+function cyc(d){const ks=Object.keys(LANGS);variant=ks&&["A","B","C"][(["A","B","C"].indexOf(variant)+d+3)%3];history.replaceState(0,"","?variant="+variant);render()}
+$("prev").onclick=()=>cyc(-1);$("next").onclick=()=>cyc(1);
+addEventListener("keydown",ev=>{
+  if(ev.altKey&&(ev.code==="KeyL")){ev.preventDefault();const ks=Object.keys(LANGS);setLang(ks[(ks.indexOf(s.lang)+1)%ks.length])}
+  else if(ev.altKey&&ev.code==="Digit1"){ev.preventDefault();setLang("js")}
+  else if(ev.altKey&&ev.code==="Digit2"){ev.preventDefault();setLang("purs")}
+  else if(document.activeElement.tagName!=="TEXTAREA"&&document.activeElement.tagName!=="SELECT"){if(ev.key==="ArrowLeft")cyc(-1);if(ev.key==="ArrowRight")cyc(1)}});
+setInterval(()=>{if(s.started!==null&&!s.paused&&!s.done)state()},100);
+render(true);
+</script>

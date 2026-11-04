@@ -1,0 +1,10 @@
+import puppeteer from "puppeteer-core";
+const b = await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true, args:["--allow-file-access-from-files"] });
+const p = await b.newPage();
+await p.goto("file://" + process.cwd() + "/index.html");
+await p.waitForSelector(".cm-content"); await p.click(".cm-content");
+const pop = async l => { await new Promise(r=>setTimeout(r,200)); console.log(l.padEnd(22), await p.$$eval(".cm-tooltip-autocomplete li", x=>x.map(y=>y.textContent))); };
+await p.keyboard.type("f = ta", {delay:20}); await pop("typed ta");
+await p.keyboard.press("Tab"); await pop("after Tab");
+await p.keyboard.type("ke", {delay:20}); await pop("typed take");
+await p.keyboard.press("Tab"); await pop("2nd Tab"); console.log(JSON.stringify(await p.evaluate(()=>window.snap().doc))); await b.close();

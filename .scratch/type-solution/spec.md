@@ -8,7 +8,7 @@ Map: [map.md](map.md). Every decision below comes from the map's resolved ticket
 
 Rules every spec and build decision must keep. Breaking one means stopping to ask.
 
-- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests' code and the Reference Solution are never shown; a failed test may show its call, its expected value and what the Solution returned.
+- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests' code is never shown (and the Reference Solution was never shown, until [ADR 0001](../../docs/adr/0001-reference-solution-shown-on-hover.md) superseded that); a failed test may show its call, its expected value and what the Solution returned.
 - **I2 — Practice comes first.** The game exists to practise a keyboard layout; code Puzzles are the wrapper. The editor gives syntax highlighting and auto-indent only: no auto-closing brackets, no suggestions or autocomplete, nothing that types for the player.
 - **I3 — One Puzzle per Run, ended by passing.** The clock runs from the first keystroke until the tests pass, minus Pauses. Tests re-run when typing pauses; the Run ends by itself on a pass, with no submit key. A Run given up from a Pause isn't recorded.
 - **I4 — No server.** The app is static files only; there is no server-side game logic, no accounts and no global leaderboards. Player code runs only in the player's browser, in a Web Worker that is stopped on a ~1 s timeout.
@@ -60,7 +60,7 @@ Today one Puzzle (fizzBuzz) already plays end to end: editor, live checks, timer
 21. As a player, I want the status line to say how many tests pass (e.g. "2/4 tests pass"), so that I can see my progress.
 22. As a player, I want the last check's feedback to stay visible while I type again, so that I can read it while fixing the code.
 23. As a player, I want a check made outdated by further typing to be dropped, so that I never see feedback for code I've already changed.
-24. As a player, I never want to see the tests' code or the Reference Solution, so that I solve the Puzzle myself.
+24. As a player, I never want to see the tests' code, so that I solve the Puzzle myself. (Superseded in part by [ADR 0001](../../docs/adr/0001-reference-solution-shown-on-hover.md): the Reference Solution can now be shown on hover.)
 
 **Passing**
 

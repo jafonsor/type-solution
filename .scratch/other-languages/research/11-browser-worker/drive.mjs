@@ -1,0 +1,10 @@
+import { chromium } from 'playwright-core';
+import http from 'node:http'; import fs from 'node:fs'; import path from 'node:path'; import zlib from 'node:zlib';
+const root = path.resolve('www');
+const srv = http.createServer((q, r) => { const p = path.join(root, decodeURIComponent(q.url.split('?')[0]) === '/' ? 'index.html' : decodeURIComponent(q.url.split('?')[0])); fs.readFile(p, (e, d) => { if (e) { r.writeHead(404); return r.end(); } const t = p.endsWith('.html') ? 'text/html' : p.endsWith('.js') ? 'text/javascript' : p.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream'; r.writeHead(200, {'content-type': t}); r.end(d); }); }).listen(8765);
+const b = await chromium.launch({ channel: 'chrome' });
+const pg = await b.newPage();
+await pg.goto('http://localhost:8765/');
+await pg.waitForFunction('window.RESULT', null, { timeout: 280000 });
+console.log(JSON.stringify(await pg.evaluate('window.RESULT'), null, 1));
+await b.close(); srv.close();

@@ -1,0 +1,9 @@
+packages: purescript/purescript.cabal
+          vendor/basement-0.0.16
+          vendor/cheapskate-0.1.1.2
+          /private/tmp/claude-501/-Users-joaorodrigues-devs-type-solution/824acc5f-031f-4910-85b2-14df5b7f2138/scratchpad/src/cborg/cborg
+allow-newer: all
+constraints: purescript -release
+
+shared: True
+library-for-ghci: False
