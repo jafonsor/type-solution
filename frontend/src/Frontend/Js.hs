@@ -24,7 +24,7 @@ module Frontend.Js
   ) where
 
 import Control.Monad (forM_, void)
-import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Monad.IO.Class (liftIO)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, writeIORef)
 import Data.Text (Text)
 import Data.Text qualified as T
@@ -93,30 +93,30 @@ saveRun json = void $ jsg ("TypeSolution" :: Text) # ("saveRun" :: Text) $ [json
 loadRuns :: JSM Text
 loadRuns = (jsg ("TypeSolution" :: Text) # ("loadRuns" :: Text) $ ()) >>= fromJSValUnchecked
 
--- | The check in flight: its worker and the callback the worker replies to.
-newtype Checker = Checker (IORef (Maybe (JSVal, Function)))
+-- | The test-runner workers (static/editor/src/checker.mjs): a spare is
+-- started ahead of time, and the callback the check in flight replies to.
+data Checker = Checker JSVal (IORef (Maybe Function))
 
-newChecker :: MonadIO m => m Checker
-newChecker = Checker <$> liftIO (newIORef Nothing)
+-- | Start the first spare worker, from the script at the URL.
+newChecker :: Text -> JSM Checker
+newChecker url = do
+  pool <- jsg ("TypeSolution" :: Text) # ("createChecker" :: Text) $ [url]
+  Checker pool <$> liftIO (newIORef Nothing)
 
--- | Start a fresh worker from the script at the URL, send it the request,
--- and pass its reply on. Any check still in flight is stopped first.
-startCheck :: Checker -> Text -> Text -> (Text -> JSM ()) -> JSM ()
-startCheck c@(Checker ref) url request onReply = do
+-- | Run the request on a fresh worker (the spare, which is replaced by a
+-- new one) and pass its reply on. Any check still in flight is stopped first.
+startCheck :: Checker -> Text -> (Text -> JSM ()) -> JSM ()
+startCheck c@(Checker pool ref) request onReply = do
   stopCheck c
-  opts <- obj
-  (opts <# ("type" :: Text)) ("module" :: Text)
-  worker <- new (jsg ("Worker" :: Text)) (url, opts)
-  replied <- function \_ _ args -> forM_ (take 1 args) \e ->
-    (e ! ("data" :: Text)) >>= fromJSValUnchecked >>= onReply
-  (worker <# ("onmessage" :: Text)) replied
-  void $ worker # ("postMessage" :: Text) $ [request]
-  liftIO $ writeIORef ref (Just (worker, replied))
+  replied <- function \_ _ args -> forM_ (take 1 args) \a ->
+    fromJSValUnchecked a >>= onReply
+  void $ pool # ("start" :: Text) $ (request, replied)
+  liftIO $ writeIORef ref (Just replied)
 
 -- | Terminate the check in flight, if any.
 stopCheck :: Checker -> JSM ()
-stopCheck (Checker ref) = do
+stopCheck (Checker pool ref) = do
   current <- liftIO $ atomicModifyIORef' ref (Nothing,)
-  forM_ current \(worker, replied) -> do
-    void $ worker # ("terminate" :: Text) $ ()
+  forM_ current \replied -> do
+    void $ pool # ("stop" :: Text) $ ()
     freeFunction replied

@@ -69,7 +69,7 @@ runWidget workerUrl = mdo
   (eKey, fireKey) <- newTriggerEvent
   editor <- liftJSM $ createEditor (_element_raw box)
     (liftIO . fireCode) (liftIO (fireEscape ())) (\t k -> liftIO (fireKey (Pressed t k)))
-  checker <- newChecker
+  checker <- liftJSM (newChecker workerUrl)
   -- The editor is built before it's on the page, so it's focused once it
   -- is: the player can start typing straight away.
   eBuilt <- delay 0 =<< getPostBuild
@@ -97,7 +97,7 @@ runWidget workerUrl = mdo
         t <- liftIO getCurrentTime
         pure (n, False, [CheckStarted n, CheckFinished t n (SyntaxError msg)])
       Nothing -> do
-        startCheck checker workerUrl (checkRequest puzzle src) \reply ->
+        startCheck checker (checkRequest puzzle src) \reply ->
           liftIO (fireReply (n, reply))
         pure (n, True, [CheckStarted n])
 

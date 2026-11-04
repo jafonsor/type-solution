@@ -30,6 +30,6 @@ instance StaticFile "images/.keep"
 instance StaticFile "js/.keep"
     where {staticPath = "js/0mdqa9w1p6cmli6976v4wi0sw9r4p5prkj7lzfd1877wk11c9c73-.keep"}
 instance StaticFile "js/editor.js"
-    where {staticPath = "js/1dil943j9bcmgckfxx0sxmb6mfwx6hy09kl4ji08q7gvm8f8yk57-editor.js"}
+    where {staticPath = "js/0snsl44k0sr1pq6njygzsfm1wv5053yshgbkalzvzlp5x50chg6a-editor.js"}
 instance StaticFile "js/runner.js"
     where {staticPath = "js/0ffcqjcm3pviidjvq34c0riaxdc6spdra1rjgw0j5yv2zn43h4wm-runner.js"}

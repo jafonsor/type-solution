@@ -23,6 +23,11 @@
 //                                   // (storage.mjs: what happens when it's full)
 //   TypeSolution.loadRuns()         // the stored Runs as JSON text, "[]" if none
 //                                   // or storage can't be read; never throws
+//   TypeSolution.createChecker(url) // test-runner workers from the script at
+//                                   // url, one spare always started ahead
+//                                   // (checker.mjs); .start(request, onReply)
+//                                   // runs a check on a fresh worker, .stop()
+//                                   // terminates it
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState, Prec, Compartment } from "@codemirror/state";
 import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
@@ -31,6 +36,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { tags as t } from "@lezer/highlight";
 import * as acorn from "acorn";
 import * as storage from "./storage.mjs";
+import { createChecker } from "./checker.mjs";
 
 const theme = EditorView.theme({
   "&": { color: "var(--editor-fg)", backgroundColor: "var(--editor-bg)" },
@@ -171,6 +177,7 @@ function loadRuns() {
 
 window.TypeSolution = {
   createEditor, syntaxError, saveRun, loadRuns,
+  createChecker(url) { return createChecker(Worker, url); },
   focus(element) { element.focus(); },
   random() { return Math.random(); },
 };
