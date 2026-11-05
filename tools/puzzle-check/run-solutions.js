@@ -22,11 +22,11 @@ export const runners = {
 };
 
 // Every Solution a Puzzle holds: [{language, code}]. The JavaScript one is
-// still top-level; other Languages have a table (see readPuzzle).
+// still top-level; every other Language has a table (see readPuzzle).
 export function solutionsOf(puzzle) {
   return [
     { language: "javascript", code: puzzle.reference },
-    ...(puzzle.purescript ? [{ language: "purescript", code: puzzle.purescript.reference }] : []),
+    { language: "purescript", code: puzzle.purescript.reference },
   ];
 }
 

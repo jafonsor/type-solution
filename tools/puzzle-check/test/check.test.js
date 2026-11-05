@@ -2,6 +2,7 @@
 // Puzzle file that passes or fails in exactly one way. The fixtures live here,
 // not in puzzles/, because the build embeds every file there.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
@@ -60,7 +61,8 @@ test("an empty list of tests fails", () => failsWith("empty-tests", /^tests must
 
 test("the build's other rules: types of the texts, args a list, tests' keys", () => {
   const base = `function = "f"\nsignature = "f()"\nprompt = "p"\nreference = "r"\n`;
-  const problems = (text) => readPuzzle("f", text).problems ?? [];
+  const ps = `\n[purescript]\nsignature = "f"\nreference = "r"\n`;
+  const problems = (text) => readPuzzle("f", text + ps).problems ?? [];
   assert.deepEqual(problems(base + `[[tests]]\nargs = []\nexpected = 1\n`), []);
   assert.deepEqual(problems(base.replace('"f()"', "3") + `[[tests]]\nargs = []\nexpected = 1\n`), [
     "signature must be a string",
@@ -139,10 +141,17 @@ test("the request sends object keys sorted, arrays in order, as the app does", (
   );
 });
 
-test("the command passes on today's bank and prints the symbol report", async () => {
-  const { stdout } = await run(process.execPath, [join(here, "..", "check.js")]);
+test("the command passes on a sound folder and prints the symbol report", async () => {
+  const { stdout } = await run(process.execPath, [join(here, "..", "check.js"), fixture("passing")]);
   assert.match(stdout, /OK: all \d+ Puzzle file\(s\) pass\./);
   assert.match(stdout, /Target symbols over \d+ Reference Solution\(s\)/);
+});
+
+test("a Puzzle without a [purescript] table fails", async () => {
+  const text = readFileSync(join(fixture("passing"), "double.toml"), "utf8").split("\n[purescript]")[0];
+  assert.deepEqual(readPuzzle("double", text).problems, [
+    "missing table: [purescript] (every Puzzle needs a Solution in every Language)",
+  ]);
 });
 
 test("the command exits non-zero and names the failing file", async () => {

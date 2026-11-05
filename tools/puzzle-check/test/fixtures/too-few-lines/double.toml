@@ -10,3 +10,12 @@ function double(x) { const twice = x * 2;
 [[tests]]
 args = [2]
 expected = 4
+
+[purescript]
+signature = "double :: Int -> Int"
+reference = """
+import Prelude
+
+double :: Int -> Int
+double x = x * 2
+"""

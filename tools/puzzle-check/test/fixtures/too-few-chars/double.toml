@@ -11,3 +11,12 @@ function double(x) {
 [[tests]]
 args = [2]
 expected = 4
+
+[purescript]
+signature = "double :: Int -> Int"
+reference = """
+import Prelude
+
+double :: Int -> Int
+double x = x * 2
+"""

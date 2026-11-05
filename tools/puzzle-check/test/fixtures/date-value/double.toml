@@ -16,3 +16,12 @@ expected = 1979-05-27
 [[tests]]
 args = [-3]
 expected = -6
+
+[purescript]
+signature = "double :: Int -> Int"
+reference = """
+import Prelude
+
+double :: Int -> Int
+double x = x * 2
+"""

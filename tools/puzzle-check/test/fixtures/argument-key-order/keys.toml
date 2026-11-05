@@ -12,3 +12,12 @@ function keys(obj) {
 [[tests]]
 args = [{ b = 1, a = 2 }]
 expected = ["b", "a"]
+
+[purescript]
+signature = "x :: Int"
+reference = """
+import Prelude
+
+x :: Int
+x = 1
+"""

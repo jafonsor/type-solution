@@ -58,19 +58,18 @@ export function readPuzzle(identity, text) {
   } catch (err) {
     return { problems: [String(err.message ?? err).trim()] };
   }
-  // An optional per-Language table (.scratch/other-languages/spec.md, "Puzzle
-  // file"). Only [purescript] so far; the JavaScript Solution stays top-level
-  // until the Puzzle files migrate. The build's own parser (Puzzle.hs) must
-  // accept the table before one is added to puzzles/.
+  // Every Puzzle has a Solution in every Language (.scratch/other-languages/spec.md,
+  // L4): a [purescript] table with `signature` and `reference`. The JavaScript
+  // Solution stays top-level until the Puzzle files migrate. The build's own
+  // parser (Puzzle.hs) must accept the table before one reaches puzzles/.
   const { purescript, ...rest } = doc;
   const problems = keyProblems(rest, puzzleKeys, "<top-level>");
-  if (purescript !== undefined) {
-    if (!isTable(purescript)) problems.push("purescript must be a table with signature and reference");
-    else {
-      problems.push(...keyProblems(purescript, ["signature", "reference"], "[purescript]"));
-      for (const k of ["signature", "reference"]) {
-        if (k in purescript && typeof purescript[k] !== "string") problems.push(`purescript.${k} must be a string`);
-      }
+  if (purescript === undefined) problems.push("missing table: [purescript] (every Puzzle needs a Solution in every Language)");
+  else if (!isTable(purescript)) problems.push("purescript must be a table with signature and reference");
+  else {
+    problems.push(...keyProblems(purescript, ["signature", "reference"], "[purescript]"));
+    for (const k of ["signature", "reference"]) {
+      if (k in purescript && typeof purescript[k] !== "string") problems.push(`purescript.${k} must be a string`);
     }
   }
   for (const k of ["function", "signature", "prompt", "reference"]) {
@@ -104,7 +103,7 @@ export function readPuzzle(identity, text) {
       prompt: doc.prompt,
       reference: doc.reference,
       tests: doc.tests.map((t) => ({ args: t.args, expected: t.expected })),
-      ...(purescript ? { purescript: { signature: purescript.signature, reference: purescript.reference } } : {}),
+      purescript: { signature: purescript.signature, reference: purescript.reference },
     },
   };
 }
