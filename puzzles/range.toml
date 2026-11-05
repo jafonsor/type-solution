@@ -1,7 +1,7 @@
 function = "range"
 prompt = """
 List the whole numbers from start up to but not including end; if end is \
-not above start, return []. For example, range(2, 6) → [2,3,4,5]."""
+not above start, return []. For example, 2, 6 → [2,3,4,5]."""
 
 [[tests]]
 args = [2, 6]

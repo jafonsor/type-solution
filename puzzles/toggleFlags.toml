@@ -2,7 +2,7 @@ function = "toggleFlags"
 prompt = """
 Return a copy of an object of true/false flags with each named flag \
 flipped; a named flag that is missing counts as false. For example, \
-toggleFlags({dark: false, sound: true}, ["dark"]) → {dark: true, sound: true}."""
+{dark: false, sound: true}, ["dark"] → {dark: true, sound: true}."""
 
 [[tests]]
 args = [{ dark = false, sound = true }, ["dark"]]

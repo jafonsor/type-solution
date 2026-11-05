@@ -2,7 +2,7 @@ function = "countWords"
 prompt = """
 Count how often each word appears in a text of lower-case words separated \
 by single spaces, as an object with the words as keys. For example, \
-countWords("to be or not to be") → {to: 2, be: 2, or: 1, not: 1}."""
+"to be or not to be" → {to: 2, be: 2, or: 1, not: 1}."""
 
 [[tests]]
 args = ["to be or not to be"]

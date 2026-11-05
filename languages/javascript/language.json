@@ -1,0 +1,10 @@
+{
+  "name": "javascript",
+  "title": "JavaScript",
+  "limits": { "minLines": 4, "maxLines": 12, "minChars": 100, "maxChars": 350 },
+  "imports": null,
+  "symbols": "{}[]()<>=!&|+-*/%'\"`$?:;,.",
+  "timeouts": { "compileMs": null, "runMs": 1000 },
+  "callingConvention": "calling-convention.md",
+  "authoring": "authoring.md"
+}

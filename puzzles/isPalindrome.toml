@@ -1,7 +1,7 @@
 function = "isPalindrome"
 prompt = """
 Return true if the text reads the same backwards as forwards, ignoring \
-upper and lower case. For example, isPalindrome("Racecar") → true."""
+upper and lower case. For example, "Racecar" → true."""
 
 [[tests]]
 args = ["Racecar"]

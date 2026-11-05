@@ -2,7 +2,7 @@ function = "baseName"
 prompt = """
 Return the file name at the end of a /-separated path, without its \
 extension (from the last dot on); a name with no dot stays whole. \
-For example, baseName("/home/ada/notes.txt") → "notes"."""
+For example, "/home/ada/notes.txt" → "notes"."""
 
 [[tests]]
 args = ["/home/ada/notes.txt"]

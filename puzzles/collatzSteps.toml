@@ -2,7 +2,7 @@ function = "collatzSteps"
 prompt = """
 Count the steps from a whole number n of 1 or more down to 1, where each \
 step halves an even number and turns an odd one into 3 × n + 1; \
-collatzSteps(1) → 0. For example, collatzSteps(6) → 8."""
+1 → 0. For example, 6 → 8."""
 
 [[tests]]
 args = [6]

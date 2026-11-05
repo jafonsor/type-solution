@@ -1,7 +1,7 @@
 function = "reverseWords"
 prompt = """
 Reverse the order of the words in a text whose words are separated by \
-single spaces. For example, reverseWords("one two three") → "three two one"."""
+single spaces. For example, "one two three" → "three two one"."""
 
 [[tests]]
 args = ["one two three"]

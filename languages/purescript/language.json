@@ -1,0 +1,12 @@
+{
+  "name": "purescript",
+  "title": "PureScript",
+  "limits": { "minLines": 4, "maxLines": 30, "minChars": 100, "maxChars": 900 },
+  "imports": { "linePattern": "^\\s*import\\b", "oneLineOnly": true, "pinnedList": "packages.json" },
+  "symbols": "{}[]()<>=&|+-*/'\"`$:,.\\_#",
+  "timeouts": { "compileMs": 5000, "runMs": 1000 },
+  "callingConvention": "calling-convention.md",
+  "authoring": "authoring.md",
+  "nameClashes": "name-clashes.json",
+  "compilerPatch": ".scratch/other-languages/research/10-purs-wasm/purescript.patch"
+}

@@ -2,7 +2,7 @@ function = "slugify"
 prompt = """
 Turn a title into a lower-case slug: its words joined by hyphens. Words are \
 separated by spaces, sometimes several in a row or at either end. \
-For example, slugify("Hello Big  World ") → "hello-big-world"."""
+For example, "Hello Big  World " → "hello-big-world"."""
 
 [[tests]]
 args = ["Hello Big  World "]

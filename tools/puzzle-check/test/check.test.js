@@ -9,6 +9,9 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { checkBank, checkRequest, lengthProblems, readPuzzle, referenceLength, runCheck, symbolCounts, symbolReports } from "../puzzle-check.js";
+import { languageNamed } from "../languages.js";
+
+const purescript = languageNamed("purescript");
 
 const here = dirname(fileURLToPath(import.meta.url));
 const fixture = (name) => join(here, "fixtures", name);
@@ -61,13 +64,13 @@ test("PureScript Reference Solutions have their own limits: 4-30 lines, 100-900 
 
 test("the PureScript limits' bounds are inclusive, and imports are not counted", () => {
   const ps = (n, width) => "import Prelude\nimport Data.Array (cons)\n" + Array.from({ length: n }, () => "x".repeat(width)).join("\n");
-  assert.deepEqual(lengthProblems(ps(4, 25), "purescript"), []); // 4 lines, 100 chars
-  assert.deepEqual(lengthProblems(ps(30, 29) + "x".repeat(30), "purescript"), []); // 30 lines, 900 chars
-  assert.equal(lengthProblems(ps(4, 25).slice(0, -1), "purescript").length, 1); // 99 chars
-  assert.equal(lengthProblems(ps(30, 29) + "x".repeat(31), "purescript").length, 1); // 901 chars
-  assert.equal(lengthProblems(ps(31, 3), "purescript").length, 2); // 31 lines, 93 chars
+  assert.deepEqual(lengthProblems(ps(4, 25), purescript), []); // 4 lines, 100 chars
+  assert.deepEqual(lengthProblems(ps(30, 29) + "x".repeat(30), purescript), []); // 30 lines, 900 chars
+  assert.equal(lengthProblems(ps(4, 25).slice(0, -1), purescript).length, 1); // 99 chars
+  assert.equal(lengthProblems(ps(30, 29) + "x".repeat(31), purescript).length, 1); // 901 chars
+  assert.equal(lengthProblems(ps(31, 3), purescript).length, 2); // 31 lines, 93 chars
   // The same text is judged by JavaScript's limits as JavaScript.
-  assert.deepEqual(referenceLength(ps(4, 25), "purescript"), { lines: 4, chars: 100 });
+  assert.deepEqual(referenceLength(ps(4, 25), purescript), { lines: 4, chars: 100 });
   assert.deepEqual(referenceLength(ps(4, 25)), { lines: 6, chars: 100 + 14 + 24 });
 });
 
@@ -143,7 +146,7 @@ test("the symbol report counts Reference Solutions containing a symbol and occur
 
 test("the symbol tables are per Language, each from its own list, and PureScript's skips imports", () => {
   const ps = ["import Data.Array (cons)\nf = \\x -> x # g", "f = 1"];
-  const counts = Object.fromEntries(symbolCounts(ps, "purescript").map((c) => [c.symbol, c]));
+  const counts = Object.fromEntries(symbolCounts(ps, purescript).map((c) => [c.symbol, c]));
   assert.deepEqual(counts["\\"], { symbol: "\\", occurrences: 1, solutions: 1 });
   assert.deepEqual(counts["#"], { symbol: "#", occurrences: 1, solutions: 1 });
   assert.deepEqual(counts["("], { symbol: "(", occurrences: 0, solutions: 0 }); // only in the import line

@@ -4,26 +4,31 @@
 //
 // Configuration (environment variables):
 //   PURS_WASM   path to purs-core.wasm. Unset: every PureScript row fails.
-//   PURS_LIBS   a folder of pinned library checkouts, `<name>/src/**/*.purs`
-//               (with the `.js` foreign files beside them). Until the pinned
-//               list lives in languages/purescript/, this folder is the list:
-//               a Solution may import only the modules found in it.
+//   PURS_LIBS   where the library sources are: a folder of checkouts of the
+//               pinned libraries, `<name>/src/**/*.purs` with the `.js`
+//               foreign files beside them. Only used to compile; WHICH
+//               libraries (and so which modules a Solution may import) is the
+//               committed list, languages/purescript/packages.json. A pinned
+//               library missing from the folder is an error.
 //
 // The work folder is built once per process and kept between Puzzles, so the
 // compiler's cached externs for the libraries are built once (about 3.4 s for
 // Prelude) and each later check takes 0.2 to 0.4 s.
 import {
   closeSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync,
-  rmSync, statSync, utimesSync, writeFileSync,
+  rmSync, utimesSync, writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { WASI } from "node:wasi";
-import { timeoutMs } from "./puzzle-check.js";
+import { languageNamed } from "./languages.js";
+import { importLint, libsFolder, loadPinned } from "./purs-imports.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
+const language = languageNamed("purescript");
+const timeoutMs = language.timeouts.runMs;
 const header = "module Main where\n";
 
 // * The work folder, seen by the compiler as /w
@@ -41,23 +46,24 @@ function walk(dir) {
 // message for the Puzzle row.
 async function openSession(wasmPath, libsPath) {
   const dir = mkdtempSync(join(tmpdir(), "puzzle-check-purs-"));
-  const session = { dir, srcFiles: [], modules: new Set(), tick: 0 };
+  const session = { dir, srcFiles: [], tick: 0 };
   try {
     session.module = await WebAssembly.compile(readFileSync(wasmPath));
     mkdirSync(join(dir, "src"));
     mkdirSync(join(dir, "out"));
     // The generated modules are ES modules.
     writeFileSync(join(dir, "out", "package.json"), '{"type":"module"}\n');
-    for (const lib of readdirSync(libsPath, { withFileTypes: true }).filter((e) => e.isDirectory() || e.isSymbolicLink())) {
+    // Only the pinned libraries, whatever else the folder holds.
+    const missing = [];
+    for (const lib of loadPinned(language).libraries) {
       const from = join(libsPath, lib.name, "src");
-      if (!existsSync(from)) continue;
-      cpSync(from, join(dir, "lib", lib.name), { recursive: true });
+      if (existsSync(from)) cpSync(from, join(dir, "lib", lib.name), { recursive: true });
+      else missing.push(lib.name);
     }
+    if (missing.length > 0) throw new Error(`${libsPath} lacks pinned libraries: ${missing.join(", ")}`);
     for (const file of existsSync(join(dir, "lib")) ? walk(join(dir, "lib")) : []) {
       if (!file.endsWith(".purs")) continue;
       session.srcFiles.push("/w" + file.slice(dir.length));
-      const m = /^module\s+([\w.]+)/m.exec(readFileSync(file, "utf8"));
-      if (m) session.modules.add(m[1]);
     }
     session.srcFiles.sort();
   } catch (err) {
@@ -77,27 +83,6 @@ function sessionFor(wasmPath, libsPath) {
     pending.catch(() => sessions.delete(key));
   }
   return sessions.get(key);
-}
-
-// * Lint
-
-const primModule = /^Prim(\.|$)/;
-const oneLineImport = /^import\s+([A-Z][\w.]*)(\s*\([^()]*(\([^()]*\)[^()]*)*\))?\s*$/;
-
-// Imports that aren't one line, or that name a library not on the pinned list.
-export function importProblems(code, modules) {
-  const problems = [];
-  code.split(/\r?\n/).forEach((line, i) => {
-    if (!/^\s*import\b/.test(line)) return;
-    const where = `line ${i + 1}`;
-    const m = oneLineImport.exec(line.trim());
-    if (!m || /\b(qualified|hiding|as)\b/.test(line)) {
-      problems.push(`${where}: only one-line imports are allowed (import M (a, b)): ${line.trim()}`);
-    } else if (!primModule.test(m[1]) && !modules.has(m[1])) {
-      problems.push(`${where}: ${m[1]} is not in a pinned library`);
-    }
-  });
-  return problems;
 }
 
 // * Compiling
@@ -265,14 +250,17 @@ function runTests(session, puzzle, dicts, options, typed) {
 const callText = (puzzle, test) => `${puzzle.function}(${test.args.map((a) => JSON.stringify(a)).join(", ")})`;
 
 // The runner: (puzzle, code, options) -> problems. `options` may carry
-// {timeout, wasm, libs} to override the environment.
+// {timeout, wasm, libs} to override the environment. The import check comes
+// first and needs neither the compiler nor the library sources.
 export async function purescriptProblems(puzzle, code, options = {}) {
+  const lint = importLint(code, language, options).problems;
+  if (lint.length > 0) return lint;
   const wasm = options.wasm ?? process.env.PURS_WASM;
-  const libs = options.libs ?? process.env.PURS_LIBS;
+  const libs = libsFolder(options.libs);
   if (!wasm) return ["no compiler configured for purescript (set PURS_WASM to the path of purs-core.wasm)"];
   if (!existsSync(wasm)) return [`no compiler configured for purescript: ${wasm} does not exist`];
-  if (!libs || !existsSync(libs) || !statSync(libs).isDirectory()) {
-    return ["no libraries configured for purescript (set PURS_LIBS to a folder of pinned libraries)"];
+  if (!libs) {
+    return ["no library sources for purescript (set PURS_LIBS to a folder of checkouts of the pinned libraries in languages/purescript/packages.json; see tools/puzzle-check/README.md)"];
   }
   let session;
   try {
@@ -280,8 +268,6 @@ export async function purescriptProblems(puzzle, code, options = {}) {
   } catch (err) {
     return [`could not set up the PureScript compiler: ${err.message ?? err}`];
   }
-  const lint = importProblems(code, session.modules);
-  if (lint.length > 0) return lint;
 
   const hasHeader = /^\s*module\s/.test(code);
   const source = hasHeader ? code : header + code;

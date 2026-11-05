@@ -1,8 +1,8 @@
 function = "mergeCounts"
 prompt = """
 Add two objects of counts together key by key; a key found in only one of \
-them keeps its count. For example, mergeCounts({apple: 2, pear: 1}, \
-{apple: 3, fig: 4}) → {apple: 5, pear: 1, fig: 4}."""
+them keeps its count. For example, {apple: 2, pear: 1}, \
+{apple: 3, fig: 4} → {apple: 5, pear: 1, fig: 4}."""
 
 [[tests]]
 args = [{ apple = 2, pear = 1 }, { apple = 3, fig = 4 }]

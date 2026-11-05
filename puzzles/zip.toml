@@ -1,7 +1,7 @@
 function = "zip"
 prompt = """
 Pair up the items of two lists by position, stopping at the end of the \
-shorter list. For example, zip([1,2,3], ["a","b"]) → [[1,"a"],[2,"b"]]."""
+shorter list. For example, [1,2,3], ["a","b"] → [[1,"a"],[2,"b"]]."""
 
 [[tests]]
 args = [[1, 2, 3], ["a", "b", "c"]]

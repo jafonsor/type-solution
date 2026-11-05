@@ -1,7 +1,8 @@
 // Tests for the PureScript runner. The fixtures in purs-fixtures/ are
 // Solution texts, kept out of puzzles/. The ones that compile need the
 // wasm compiler: set PURS_WASM (purs-core.wasm) and PURS_LIBS (a folder of
-// pinned libraries with at least Prelude); without them those tests skip.
+// checkouts of the pinned libraries, languages/purescript/packages.json);
+// without them those tests skip.
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -52,13 +53,14 @@ compiled("a failing test is named", async () =>
     "test 1 failed: clamp(15, 0, 10) expected 10, got 0",
   ]));
 
-compiled("an import outside the pinned libraries fails", async () =>
-  assert.deepEqual(await purescriptProblems(clamp, solution("unpinned-import")), [
+// The import lint reads the committed list: no compiler and no sources needed.
+test("an import outside the pinned libraries fails", async () =>
+  assert.deepEqual(await purescriptProblems(clamp, solution("unpinned-import"), { wasm: "", libs: "" }), [
     "line 2: Data.Fake.Missing is not in a pinned library",
   ]));
 
-compiled("a wrapped import fails", async () => {
-  const problems = await purescriptProblems(clamp, solution("wrapped-import"));
+test("a wrapped import fails", async () => {
+  const problems = await purescriptProblems(clamp, solution("wrapped-import"), { wasm: "", libs: "" });
   assert.equal(problems.length, 1);
   assert.match(problems[0], /^line 2: only one-line imports are allowed/);
 });

@@ -1,7 +1,7 @@
 function = "positions"
 prompt = """
 List the positions, counting from 0, where the value appears in a list; [] \
-if it never does. For example, positions(["a","b","a"], "a") → [0,2]."""
+if it never does. For example, ["a","b","a"], "a" → [0,2]."""
 
 [[tests]]
 args = [["a", "b", "a"], "a"]

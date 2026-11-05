@@ -2,7 +2,7 @@ function = "getPath"
 prompt = """
 Follow a dot-separated path of keys into nested objects and return the \
 value at its end; every key on the path exists. For example, \
-getPath({a: {b: {c: 5}}}, "a.b.c") → 5."""
+{a: {b: {c: 5}}}, "a.b.c" → 5."""
 
 [[tests]]
 args = [{ a = { b = { c = 5 } } }, "a.b.c"]

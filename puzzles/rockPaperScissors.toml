@@ -2,7 +2,7 @@ function = "rockPaperScissors"
 prompt = """
 Return "win" if move a beats move b, "lose" if b beats a, and "draw" if they \
 are the same; rock beats scissors, scissors beats paper, paper beats rock. \
-For example, rockPaperScissors("rock", "scissors") → "win"."""
+For example, "rock", "scissors" → "win"."""
 
 [[tests]]
 args = ["rock", "scissors"]

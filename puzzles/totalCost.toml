@@ -2,7 +2,7 @@ function = "totalCost"
 prompt = """
 A cart maps items to quantities and a price list maps items to prices in \
 cents; return the cart's total in cents, 0 for an empty cart. For example, \
-totalCost({apple: 3, pear: 2}, {apple: 50, pear: 75, fig: 90}) → 300."""
+{apple: 3, pear: 2}, {apple: 50, pear: 75, fig: 90} → 300."""
 
 [[tests]]
 args = [{ apple = 3, pear = 2 }, { apple = 50, pear = 75, fig = 90 }]

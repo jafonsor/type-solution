@@ -1,7 +1,7 @@
 function = "gcd"
 prompt = """
 Return the greatest whole number that divides both positive whole numbers \
-a and b. For example, gcd(12, 18) → 6."""
+a and b. For example, 12, 18 → 6."""
 
 [[tests]]
 args = [12, 18]

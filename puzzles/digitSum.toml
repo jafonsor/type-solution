@@ -1,7 +1,7 @@
 function = "digitSum"
 prompt = """
 Add up the digits of a whole number that is zero or more. For example, \
-digitSum(472) → 13, and digitSum(0) → 0."""
+472 → 13, and 0 → 0."""
 
 [[tests]]
 args = [472]

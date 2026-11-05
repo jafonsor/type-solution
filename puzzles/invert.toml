@@ -1,7 +1,7 @@
 function = "invert"
 prompt = """
 Swap an object's keys and values; the values are distinct strings. \
-For example, invert({a: "x", b: "y"}) → {x: "a", y: "b"}."""
+For example, {a: "x", b: "y"} → {x: "a", y: "b"}."""
 
 [[tests]]
 args = [{ a = "x", b = "y" }]

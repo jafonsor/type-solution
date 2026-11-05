@@ -2,7 +2,7 @@ function = "groupByLength"
 prompt = """
 Group words by length, as an object whose keys are the lengths and whose \
 values list the words of that length in their original order. For example, \
-groupByLength(["cat","apple","dog"]) → {3: ["cat","dog"], 5: ["apple"]}."""
+["cat","apple","dog"] → {3: ["cat","dog"], 5: ["apple"]}."""
 
 [[tests]]
 args = [["cat", "apple", "dog"]]

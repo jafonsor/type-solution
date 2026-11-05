@@ -1,7 +1,7 @@
 function = "dotProduct"
 prompt = """
 Multiply the numbers of two equal-length lists position by position and \
-add up the products. For example, dotProduct([1,2,3], [4,5,6]) → 32."""
+add up the products. For example, [1,2,3], [4,5,6] → 32."""
 
 [[tests]]
 args = [[1, 2, 3], [4, 5, 6]]

@@ -1,7 +1,7 @@
 function = "grid"
 prompt = """
 Build a list of rows lists, each holding cols copies of the value. \
-For example, grid(2, 3, 0) → [[0,0,0],[0,0,0]]."""
+For example, 2, 3, 0 → [[0,0,0],[0,0,0]]."""
 
 [[tests]]
 args = [2, 3, 0]

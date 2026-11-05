@@ -1,8 +1,8 @@
 function = "plural"
 prompt = """
 Return the count, a space and the word, adding an "s" to the word unless \
-the count is exactly 1. For example, plural(3, "cat") → "3 cats" and \
-plural(1, "cat") → "1 cat"."""
+the count is exactly 1. For example, 3, "cat" → "3 cats" and \
+1, "cat" → "1 cat"."""
 
 [[tests]]
 args = [3, "cat"]

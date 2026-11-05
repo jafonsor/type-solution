@@ -2,7 +2,7 @@ function = "differences"
 prompt = """
 Return each number minus the one before it, so the result is one item \
 shorter; a single number gives []. For example, \
-differences([1,4,9,16]) → [3,5,7]."""
+[1,4,9,16] → [3,5,7]."""
 
 [[tests]]
 args = [[1, 4, 9, 16]]

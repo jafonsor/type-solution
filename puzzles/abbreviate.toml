@@ -2,7 +2,7 @@ function = "abbreviate"
 prompt = """
 Shorten a word to its first letter, the number of letters between the first \
 and the last, and its last letter; a word of three letters or fewer stays as \
-it is. For example, abbreviate("internationalization") → "i18n"."""
+it is. For example, "internationalization" → "i18n"."""
 
 [[tests]]
 args = ["internationalization"]

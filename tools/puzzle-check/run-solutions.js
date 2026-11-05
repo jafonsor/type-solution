@@ -5,10 +5,11 @@
 // only answers "does each Reference Solution pass its tests?". Exits 1 if any
 // Solution fails or if a Puzzle has a Solution in a Language with no runner.
 //
-// To add a Language: put its Reference Solutions in the Puzzle file (see
-// `solutionsOf`) and add a runner to `runners`.
+// To add a Language: add its languages/<name>/ folder and a runner to
+// `runners`; a Language with no runner shows as a failing row.
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
+import { defaultLanguages, loadLanguages } from "./languages.js";
 import { defaultPuzzlesDir, readPuzzle, testProblems } from "./puzzle-check.js";
 import { purescriptProblems } from "./purs-runner.js";
 
@@ -24,20 +25,18 @@ export const runners = {
 // Every Solution a Puzzle holds: [{language, code}], one per Language table
 // (see readPuzzle).
 export function solutionsOf(puzzle) {
-  return [
-    { language: "javascript", code: puzzle.reference },
-    { language: "purescript", code: puzzle.purescript.reference },
-  ];
+  return Object.entries(puzzle.solutions).map(([language, { reference }]) => ({ language, code: reference }));
 }
 
 // Resolves to rows [{identity, language, problems}] (problems empty = pass).
-export async function runSolutions(dir = defaultPuzzlesDir, { languages, puzzles, options } = {}) {
+export async function runSolutions(dir = defaultPuzzlesDir, { languages, puzzles, options, languagesDir } = {}) {
+  const known = languagesDir ? loadLanguages(languagesDir) : defaultLanguages;
   const rows = [];
   const names = readdirSync(dir).filter((n) => extname(n) === ".toml").sort();
   for (const name of names) {
     const identity = name.slice(0, -".toml".length);
     if (puzzles && !puzzles.includes(identity)) continue;
-    const { puzzle, problems } = readPuzzle(identity, readFileSync(join(dir, name), "utf8"));
+    const { puzzle, problems } = readPuzzle(identity, readFileSync(join(dir, name), "utf8"), known);
     if (!puzzle) {
       rows.push({ identity, language: "-", problems: ["unreadable Puzzle file", ...problems] });
       continue;

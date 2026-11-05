@@ -1,7 +1,7 @@
 function = "scale"
 prompt = """
 Multiply every number in a list by the factor. For example, \
-scale([1,2,3], 10) → [10,20,30]."""
+[1,2,3], 10 → [10,20,30]."""
 
 [[tests]]
 args = [[1, 2, 3], 10]

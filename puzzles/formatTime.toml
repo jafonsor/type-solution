@@ -1,7 +1,7 @@
 function = "formatTime"
 prompt = """
 Format a whole number of seconds as minutes and seconds, with the seconds \
-always two digits. For example, formatTime(125) → "2:05"."""
+always two digits. For example, 125 → "2:05"."""
 
 [[tests]]
 args = [125]

@@ -2,7 +2,7 @@ function = "withDefaults"
 prompt = """
 Return a new object with every key of defaults and of options; where both \
 have a key, the value from options wins. For example, \
-withDefaults({size: 2}, {size: 1, color: "red"}) → {size: 2, color: "red"}."""
+{size: 2}, {size: 1, color: "red"} → {size: 2, color: "red"}."""
 
 [[tests]]
 args = [{ size = 2 }, { size = 1, color = "red" }]

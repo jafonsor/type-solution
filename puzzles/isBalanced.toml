@@ -2,7 +2,7 @@ function = "isBalanced"
 prompt = """
 Return true if every ( in the text is closed by a later ) and no ) comes \
 before its (; other characters don't matter. For example, \
-isBalanced("(a(b)c)") → true, and isBalanced(")(") → false."""
+"(a(b)c)" → true, and ")(" → false."""
 
 [[tests]]
 args = ["(a(b)c)"]

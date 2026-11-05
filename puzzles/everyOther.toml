@@ -1,7 +1,7 @@
 function = "everyOther"
 prompt = """
 Return the items at positions 0, 2, 4 and so on, counting from 0. \
-For example, everyOther(["a","b","c","d","e"]) → ["a","c","e"]."""
+For example, ["a","b","c","d","e"] → ["a","c","e"]."""
 
 [[tests]]
 args = [["a", "b", "c", "d", "e"]]

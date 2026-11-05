@@ -1,7 +1,7 @@
 function = "initials"
 prompt = """
 Return the upper-case first letter of each word in a name, each followed \
-by a dot: initials("ada lovelace") → "A.L.". Words are separated by \
+by a dot: "ada lovelace" → "A.L.". Words are separated by \
 single spaces."""
 
 [[tests]]

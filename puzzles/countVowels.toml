@@ -1,7 +1,7 @@
 function = "countVowels"
 prompt = """
 Count the vowels a, e, i, o and u in the text, upper or lower case. \
-For example, countVowels("Hello World") → 3."""
+For example, "Hello World" → 3."""
 
 [[tests]]
 args = ["Hello World"]

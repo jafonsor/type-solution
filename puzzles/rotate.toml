@@ -1,7 +1,7 @@
 function = "rotate"
 prompt = """
 Move the first k items of a list to its end, where k is from 0 up to the \
-list's length. For example, rotate([1,2,3,4,5], 2) → [3,4,5,1,2]."""
+list's length. For example, [1,2,3,4,5], 2 → [3,4,5,1,2]."""
 
 [[tests]]
 args = [[1, 2, 3, 4, 5], 2]

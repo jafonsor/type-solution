@@ -1,7 +1,7 @@
 function = "percent"
 prompt = """
 Return part as a percentage of whole, rounded to the nearest whole number; \
-a whole of 0 gives 0. For example, percent(1, 3) → 33."""
+a whole of 0 gives 0. For example, 1, 3 → 33."""
 
 [[tests]]
 args = [1, 3]

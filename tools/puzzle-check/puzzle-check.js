@@ -2,28 +2,33 @@
 //   - reads the file with the same rules as the build (Common.Puzzle.parsePuzzle),
 //   - runs the Reference Solution against the Puzzle's tests through the
 //     browser's own test-runner script (static/src/js/runner.js), unchanged,
-//   - checks the Reference Solution's length,
+//   - checks every Language's Reference Solution's length and, for a Language
+//     with imports, its import lines,
+//   - lints the prompt for Language-specific call syntax,
 // and reports how often each target symbol appears across all Reference
 // Solutions, per Language (a report only, never a failure).
+// The Languages, with their limits and symbols, are read from the repo's
+// languages/<name>/ folders (languages.js); nothing here names one.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { parse as parseToml } from "smol-toml";
+import { defaultLanguages, languageNamed, loadLanguages } from "./languages.js";
+import { importLint } from "./purs-imports.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const defaultPuzzlesDir = resolve(here, "../../puzzles");
 export const defaultRunnerPath = resolve(here, "../../static/src/js/runner.js");
 
-// Like the browser's check timeout (frontend/src/Frontend/Run.hs, checkTimeout).
-export const timeoutMs = 1000;
+// The JavaScript check's timeout, from languages/javascript/language.json (like
+// the browser's, frontend/src/Frontend/Run.hs, checkTimeout).
+export const timeoutMs = languageNamed("javascript").timeouts.runMs;
 
 // * Reading a Puzzle file
 
 const puzzleKeys = ["function", "prompt", "tests"];
-// The known Language tables, each holding exactly `signature` and `reference`
-// (the build's Puzzle.hs knows the same two).
-const languages = ["javascript", "purescript"];
+// Each Language table holds exactly `signature` and `reference`.
 const languageKeys = ["signature", "reference"];
 const testKeys = ["args", "expected"];
 
@@ -56,11 +61,11 @@ function jsonProblems(v, where) {
 
 // Reads a Puzzle file's text. Returns {puzzle} or {problems: [message]}.
 // Matches the build's rules: `function`, `prompt`, `tests` and a table per
-// Language are required, no other key is allowed, the texts are strings, `tests` is a list of tables each with
+// Language (one per languages/<name>/ folder) are required, no other key is allowed, the texts are strings, `tests` is a list of tables each with
 // exactly `args` (a list) and `expected`, all JSON values. Stricter than the
 // build in one way: `tests` must not be empty (a Puzzle nobody can fail
 // proves nothing).
-export function readPuzzle(identity, text) {
+export function readPuzzle(identity, text, languages = defaultLanguages) {
   let doc;
   try {
     doc = parseToml(text);
@@ -71,10 +76,11 @@ export function readPuzzle(identity, text) {
   // L4): a table per Language, each with `signature` and `reference`. Like the
   // build's parser (Puzzle.hs), a missing table, an unknown one or a key
   // outside the two is an error.
-  const tables = Object.fromEntries(languages.map((l) => [l, doc[l]]));
-  const rest = Object.fromEntries(Object.entries(doc).filter(([k]) => !languages.includes(k)));
+  const names = languages.map((l) => l.name);
+  const tables = Object.fromEntries(names.map((l) => [l, doc[l]]));
+  const rest = Object.fromEntries(Object.entries(doc).filter(([k]) => !names.includes(k)));
   const problems = keyProblems(rest, puzzleKeys, "<top-level>");
-  for (const language of languages) {
+  for (const language of names) {
     const table = tables[language];
     if (table === undefined) {
       problems.push(`missing table: [${language}] (every Puzzle needs a Solution in every Language)`);
@@ -113,38 +119,29 @@ export function readPuzzle(identity, text) {
     }
   }
   if (problems.length > 0) return { problems };
+  // `solutions` has one {signature, reference} per Language; `signature` and
+  // `reference` are the JavaScript ones, which the browser's runner takes.
+  const solutions = Object.fromEntries(names.map((l) => [l, { signature: tables[l].signature, reference: tables[l].reference }]));
   return {
     puzzle: {
       identity,
       function: doc.function,
-      signature: tables.javascript.signature,
+      signature: solutions.javascript?.signature,
       prompt: doc.prompt,
-      reference: tables.javascript.reference,
+      reference: solutions.javascript?.reference,
       tests: doc.tests.map((t) => ({ args: t.args, expected: t.expected })),
-      purescript: { signature: tables.purescript.signature, reference: tables.purescript.reference },
+      solutions,
     },
   };
 }
 
 // * Length
 
-// Per Language. The limits are the spec's defaults (.scratch/other-languages/spec.md,
-// "Puzzle file"): JavaScript keeps its original ones; PureScript gets the wider
-// ones, with import lines (inserted by the editor, not typed) left out.
-export const lengthRules = {
-  javascript: { minLines: 4, maxLines: 12, minChars: 100, maxChars: 350 },
-  purescript: { minLines: 4, maxLines: 30, minChars: 100, maxChars: 900 },
-};
-export const lengthRule = lengthRules.javascript;
-
-// The Languages whose Solutions have import lines, and the line that is one.
-const importLine = { purescript: /^\s*import\b/ };
-
 // The part of a Reference Solution the player types: all of it, but the
 // import lines for a Language that has them.
-export const typedCode = (reference, language = "javascript") =>
-  importLine[language]
-    ? reference.split(/\r?\n/).filter((l) => !importLine[language].test(l)).join("\n")
+export const typedCode = (reference, language = languageNamed("javascript")) =>
+  language.importLine
+    ? reference.split(/\r?\n/).filter((l) => !language.importLine.test(l)).join("\n")
     : reference;
 
 // How long a Reference Solution is, as the player types it. Each line has its
@@ -154,7 +151,7 @@ export const typedCode = (reference, language = "javascript") =>
 // breaks are not characters here: they are counted by `lines`. Trailing
 // whitespace on a line is counted, as the rule removes only leading
 // whitespace. Imports are excluded for Languages that have them.
-export function referenceLength(reference, language = "javascript") {
+export function referenceLength(reference, language = languageNamed("javascript")) {
   const kept = typedCode(reference, language)
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s+/, ""))
@@ -162,12 +159,11 @@ export function referenceLength(reference, language = "javascript") {
   return { lines: kept.length, chars: kept.reduce((n, line) => n + [...line].length, 0) };
 }
 
-const languageName = { javascript: "", purescript: "PureScript " };
-
-export function lengthProblems(reference, language = "javascript") {
+// The limits are the Language's own, from its language.json.
+export function lengthProblems(reference, language = languageNamed("javascript")) {
   const { lines, chars } = referenceLength(reference, language);
-  const r = lengthRules[language];
-  const who = `${languageName[language]}Reference Solution`;
+  const r = language.limits;
+  const who = `${language.title} Reference Solution`;
   const problems = [];
   if (lines < r.minLines || lines > r.maxLines) {
     problems.push(`${who} has ${lines} non-blank lines; it must have ${r.minLines}–${r.maxLines}`);
@@ -179,6 +175,31 @@ export function lengthProblems(reference, language = "javascript") {
     );
   }
   return problems;
+}
+
+// * Prompt
+
+// The prompt is shared by every Language, so its examples are plain
+// input → output pairs ("abc" → "cba"; several inputs separated by commas).
+// Flags the syntax of a call or a function written in some Language. Kept
+// conservative: only forms ordinary English never produces.
+const promptPatterns = [
+  [/\b[a-z]+[A-Z]\w*\(/, "a call such as isBalanced(…)"],
+  [/\.[A-Za-z_]\w*\(/, "a method call such as .map(…)"],
+  [/=>|===|!==|::|\\\w+\s*->/, "an arrow, comparison or type signature"],
+  [/\b(?:const|let|var)\s+\w+\s*=/, "a variable declaration"],
+  [/\bfunction\s*\w*\s*\(/, "a function expression"],
+];
+
+export function promptProblems(prompt, functionName) {
+  const calledByName = functionName && new RegExp(`\\b${functionName}\\s*\\(`).test(prompt);
+  const found = promptPatterns
+    .filter(([re], i) => re.test(prompt) && !(i === 0 && calledByName))
+    .map(([, what]) => what);
+  if (calledByName) found.unshift(`a call such as ${functionName}(…)`);
+  return found.map(
+    (what) => `prompt has Language-specific call syntax (${what}); write examples as plain input → output pairs, like "abc" → "cba"`,
+  );
 }
 
 // * Running the tests
@@ -253,27 +274,16 @@ export async function testProblems(puzzle, options) {
 
 // * Symbols
 
-// The target symbols per Language. JavaScript's is the `write-puzzle` set.
-// PureScript's is tuned from its real Reference Solutions: it has the same
-// brackets, operators and quotes, plus `\`, `_` and `#`, which its Solutions
-// use all the time (lambdas, wildcards and sections, the `#` pipe); and it
-// drops `!`, `%`, `?` and `;`, which no natural PureScript Solution here
-// needs (`mod` is a word, `!` and `?` exist only as `!!` and typed holes,
-// `;` is not used with layout). Ticket 25 moves both lists into
-// languages/<name>/.
-export const targetSymbols = {
-  javascript: [..."{}[]()<>=!&|+-*/%'\"`$?:;,."],
-  purescript: [..."{}[]()<>=&|+-*/'\"`$:,.\\_#"],
-};
+// The target symbols are the Language's own list, from its language.json.
 export const coverageGoal = 5;
 
 // For each of the Language's target symbols: how many times it appears over
 // all Reference Solutions (`occurrences`) and in how many Reference Solutions
 // (`solutions`). The coverage goal is judged on `solutions`. Imports, which the
 // editor inserts, are not counted.
-export function symbolCounts(references, language = "javascript") {
+export function symbolCounts(references, language = languageNamed("javascript")) {
   const typed = references.map((r) => typedCode(r, language));
-  return targetSymbols[language].map((symbol) => {
+  return language.symbols.map((symbol) => {
     const perSolution = typed.map((r) => r.split(symbol).length - 1);
     return {
       symbol,
@@ -283,52 +293,65 @@ export function symbolCounts(references, language = "javascript") {
   });
 }
 
-export function symbolReport(references, language = "javascript") {
+export function symbolReport(references, language = languageNamed("javascript")) {
   const rows = symbolCounts(references, language).map(({ symbol, occurrences, solutions }) => {
     const mark = solutions < coverageGoal ? `  <- in fewer than ${coverageGoal}` : "";
     return `  ${symbol}    ${String(solutions).padStart(9)}  ${String(occurrences).padStart(11)}${mark}`;
   });
   return [
-    `Target symbols, ${language}, over ${references.length} Reference Solution(s) (a report, never a failure):`,
+    `Target symbols, ${language.name}, over ${references.length} Reference Solution(s) (a report, never a failure):`,
     "  sym  solutions  occurrences   (solutions: Reference Solutions containing it)",
     ...rows,
   ].join("\n");
 }
 
-// One report per Language, `references` being {language: [Reference Solution]}.
-export const symbolReports = (references) =>
-  Object.keys(targetSymbols)
-    .map((language) => symbolReport(references[language] ?? [], language))
-    .join("\n\n");
+// One report per Language, `references` being {language name: [Reference Solution]}.
+export const symbolReports = (references, languages = defaultLanguages) =>
+  languages.map((language) => symbolReport(references[language.name] ?? [], language)).join("\n\n");
 
 // * The whole bank
 
-// Checks every .toml file in the folder. Resolves to {ok, failures, report}:
-// `failures` is [{file, identity, problems}] for each failing Puzzle file;
-// `report` is the symbol report, one table per Language, over the Puzzles that
-// could be read.
-export async function checkBank(dir = defaultPuzzlesDir, options) {
+// The import checks, by Language name: (code, language, options) -> {problems,
+// notes}. A Language with import lines but no entry here has them left out of
+// the counts and nothing more.
+export const importLinters = { purescript: importLint };
+
+// Checks every .toml file in the folder against the Languages in
+// `options.languagesDir` (the repo's languages/ by default). Resolves to {ok,
+// checked, failures, report, notes}: `failures` is [{file, identity, problems}]
+// for each failing Puzzle file; `report` is the symbol report, one table per
+// Language, over the Puzzles that could be read; `notes` say what the check
+// could not do (for example, name checks without library sources). Other
+// options go to the browser's runner.
+export async function checkBank(dir = defaultPuzzlesDir, { languagesDir, ...options } = {}) {
+  const languages = languagesDir ? loadLanguages(languagesDir) : defaultLanguages;
   const names = readdirSync(dir)
     .filter((n) => extname(n) === ".toml")
     .sort();
   const failures = [];
-  const references = Object.fromEntries(Object.keys(targetSymbols).map((l) => [l, []]));
+  const notes = new Set();
+  const references = Object.fromEntries(languages.map((l) => [l.name, []]));
   if (names.length === 0) failures.push({ file: dir, identity: null, problems: ["There are no Puzzle files."] });
   for (const name of names) {
     const identity = name.slice(0, -".toml".length);
-    const { puzzle, problems } = readPuzzle(identity, readFileSync(join(dir, name), "utf8"));
+    const { puzzle, problems } = readPuzzle(identity, readFileSync(join(dir, name), "utf8"), languages);
     if (!puzzle) {
       failures.push({ file: name, identity, problems });
       continue;
     }
-    references.javascript.push(puzzle.reference);
-    references.purescript.push(puzzle.purescript.reference);
-    const found = [
-      ...lengthProblems(puzzle.reference),
-      ...lengthProblems(puzzle.purescript.reference, "purescript"),
-      ...(await testProblems(puzzle, options)),
-    ];
+    const found = promptProblems(puzzle.prompt, puzzle.function);
+    for (const language of languages) {
+      const { reference } = puzzle.solutions[language.name];
+      references[language.name].push(reference);
+      found.push(...lengthProblems(reference, language));
+      if (language.importLine && importLinters[language.name]) {
+        const lint = importLinters[language.name](reference, language, options);
+        found.push(...lint.problems);
+        lint.notes.forEach((n) => notes.add(n));
+      }
+    }
+    if (puzzle.reference !== undefined) found.push(...(await testProblems(puzzle, options)));
     if (found.length > 0) failures.push({ file: name, identity, problems: found });
   }
-  return { ok: failures.length === 0, checked: names.length, failures, report: symbolReports(references) };
+  return { ok: failures.length === 0, checked: names.length, failures, report: symbolReports(references, languages), notes: [...notes] };
 }

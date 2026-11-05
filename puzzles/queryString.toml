@@ -2,7 +2,7 @@ function = "queryString"
 prompt = """
 Build a query string from an object: each key and value joined by =, the \
 pairs joined by &, keys in alphabetical order; an empty object gives "". \
-For example, queryString({q: "cats", page: 2}) → "page=2&q=cats"."""
+For example, {q: "cats", page: 2} → "page=2&q=cats"."""
 
 [[tests]]
 args = [{ q = "cats", page = 2 }]

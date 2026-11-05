@@ -2,7 +2,7 @@ function = "flatten"
 prompt = """
 Join a list of lists into one list, in order, one level deep: items that \
 are themselves lists stay whole. For example, \
-flatten([[1,2],[3],[],[4,5]]) → [1,2,3,4,5]."""
+[[1,2],[3],[],[4,5]] → [1,2,3,4,5]."""
 
 [[tests]]
 args = [[[1, 2], [3], [], [4, 5]]]

@@ -1,7 +1,7 @@
 function = "unique"
 prompt = """
 Remove repeated items from a list, keeping each item where it first \
-appears. For example, unique([1,2,2,3,1]) → [1,2,3]."""
+appears. For example, [1,2,2,3,1] → [1,2,3]."""
 
 [[tests]]
 args = [[1, 2, 2, 3, 1]]

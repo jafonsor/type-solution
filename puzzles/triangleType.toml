@@ -2,7 +2,7 @@ function = "triangleType"
 prompt = """
 Name a triangle by its side lengths: "equilateral" if all three are equal, \
 "isosceles" if exactly two are, otherwise "scalene". For example, \
-triangleType(3, 3, 5) → "isosceles"."""
+3, 3, 5 → "isosceles"."""
 
 [[tests]]
 args = [3, 3, 5]

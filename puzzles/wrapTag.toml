@@ -1,7 +1,7 @@
 function = "wrapTag"
 prompt = """
 Wrap the text in an opening and a closing HTML tag with the given name. \
-For example, wrapTag("b", "hi") → "<b>hi</b>"."""
+For example, "b", "hi" → "<b>hi</b>"."""
 
 [[tests]]
 args = ["b", "hi"]

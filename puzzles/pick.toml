@@ -2,7 +2,7 @@ function = "pick"
 prompt = """
 Return a new object holding only the listed keys of obj and their values; \
 a listed key that obj lacks is left out. For example, \
-pick({a: 1, b: 2, c: 3}, ["a","c"]) → {a: 1, c: 3}."""
+{a: 1, b: 2, c: 3}, ["a","c"] → {a: 1, c: 3}."""
 
 [[tests]]
 args = [{ a = 1, b = 2, c = 3 }, ["a", "c"]]
