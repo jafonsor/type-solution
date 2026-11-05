@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { purescriptProblems } from "../purs-runner.js";
+import { dictionaryKinds, purescriptProblems } from "../purs-runner.js";
 import { runners } from "../run-solutions.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -54,13 +54,34 @@ compiled("a failing test is named", async () =>
 
 compiled("an import outside the pinned libraries fails", async () =>
   assert.deepEqual(await purescriptProblems(clamp, solution("unpinned-import")), [
-    "line 2: Data.Array is not in a pinned library",
+    "line 2: Data.Fake.Missing is not in a pinned library",
   ]));
 
 compiled("a wrapped import fails", async () => {
   const problems = await purescriptProblems(clamp, solution("wrapped-import"));
   assert.equal(problems.length, 1);
   assert.match(problems[0], /^line 2: only one-line imports are allowed/);
+});
+
+test("constraints in a signature become dictionary arguments", () => {
+  const kinds = (sig) => dictionaryKinds(`import Prelude\n\n${sig}\nf x = x\n`, "f");
+  assert.deepEqual(kinds("f :: Int -> Int"), []);
+  assert.deepEqual(kinds("f :: forall a. Eq a => Array a -> Array a"), ["eq"]);
+  assert.deepEqual(kinds("f :: forall a b. Union a b c => Nub c d => Record a -> Record d"), ["other", "other"]);
+  assert.deepEqual(kinds("f :: forall a. (Eq a, Show a) => a -> String"), ["eq", "other"]);
+  assert.deepEqual(kinds("f\n  :: forall a\n   . Eq a\n  => a\n  -> a"), ["eq"]);
+  assert.deepEqual(dictionaryKinds("g :: Eq a => a -> a\nf :: Int -> Int\n", "f"), []);
+});
+
+compiled("an Eq dictionary is supplied from the signature", async () => {
+  const same = {
+    function: "same",
+    tests: [
+      { args: [1, 1], expected: true },
+      { args: ["a", "b"], expected: false },
+    ],
+  };
+  assert.deepEqual(await purescriptProblems(same, solution("eq-constraint")), []);
 });
 
 test("a Puzzle file's [purescript] table is read, and run-solutions runs it", async () => {

@@ -150,16 +150,39 @@ function runCompiler(session, source) {
   return { exit, text: readFileSync(outPath, "utf8") + readFileSync(errPath, "utf8") };
 }
 
+// * Calling convention
+
+// A function with constraints in its type takes one argument per constraint
+// before its own: `unique :: forall a. Eq a => Array a -> Array a` compiles to
+// `unique(dictEq)(items)`. Row constraints (Union, Nub, RowToList, ...) take an
+// argument too, and ignore it. The tests only know JSON values, so the runner
+// reads the constraints off the function's signature in the code and the test
+// worker supplies the arguments: "eq" is an Eq dictionary for JSON values,
+// "other" any value. A user-written class can't be supplied: its dictionary
+// holds the class's methods.
+export function dictionaryKinds(code, fn) {
+  const at = new RegExp(`^${fn}\\s*::((?:.*)(?:\\r?\\n[ \\t]+.*)*)`, "m").exec(code);
+  if (!at) return [];
+  const type = at[1].replace(/\bforall\b[^.]*\./, "");
+  const parts = type.split("=>").slice(0, -1);
+  return parts
+    .flatMap((part) => {
+      const t = part.trim();
+      return t.startsWith("(") && t.endsWith(")") ? t.slice(1, -1).split(",") : [t];
+    })
+    .map((c) => (/^Eq\b/.test(c.trim()) ? "eq" : "other"));
+}
+
 // * Running
 
 // Runs the compiled Main against the tests in a worker, with the timeout.
-function runTests(session, puzzle, options) {
+function runTests(session, puzzle, dicts, options) {
   const timeout = options?.timeout ?? timeoutMs;
   // A new query each time, so the import isn't served from the module cache.
   const mainUrl = pathToFileURL(join(session.dir, "out", "Main", "index.js")).href + `?v=${session.tick}`;
   return new Promise((done) => {
     const worker = new Worker(join(here, "purs-test-worker.js"), {
-      workerData: { mainUrl, fn: puzzle.function, tests: puzzle.tests },
+      workerData: { mainUrl, fn: puzzle.function, dicts, tests: puzzle.tests },
     });
     const timer = setTimeout(() => finish({ kind: "timeout" }), timeout);
     const finish = (r) => {
@@ -199,7 +222,7 @@ export async function purescriptProblems(puzzle, code, options = {}) {
   const { exit, text } = runCompiler(session, source);
   if (exit !== 0) return [`compile error at ${firstError(text, hasHeader ? 0 : 1)}`];
 
-  const reply = await runTests(session, puzzle, options);
+  const reply = await runTests(session, puzzle, dictionaryKinds(code, puzzle.function), options);
   if (reply.kind === "timeout") return [`Reference Solution timed out (over ${options.timeout ?? timeoutMs} ms)`];
   if (reply.kind === "error") return [`Reference Solution crashed: ${reply.message}`];
   return puzzle.tests.flatMap((t, i) =>

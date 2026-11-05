@@ -29,5 +29,15 @@ function withDefaults(options, defaults) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+withDefaults :: forall a b c d. Union a b c => Nub c d => Record a -> Record b -> Record d
+withDefaults options defaults = ...'''
+reference = '''
+import Prim.Row (class Nub, class Union)
+import Record (merge)
+
+withDefaults :: forall a b c d. Union a b c => Nub c d => Record a -> Record b -> Record d
+withDefaults options defaults = result
+  where
+    result = merge options defaults
+'''

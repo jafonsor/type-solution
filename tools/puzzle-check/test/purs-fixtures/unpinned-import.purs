@@ -1,5 +1,5 @@
 import Prelude
-import Data.Array (head)
+import Data.Fake.Missing (head)
 
 clamp :: Int -> Int -> Int -> Int
 clamp value lo hi

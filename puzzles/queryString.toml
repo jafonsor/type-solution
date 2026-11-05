@@ -32,5 +32,20 @@ function queryString(params) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+queryString :: Object Json -> String
+queryString params = ...'''
+reference = '''
+import Prelude
+import Data.Argonaut.Core (Json, stringify, toString)
+import Data.Maybe (fromMaybe)
+import Data.String (joinWith)
+import Data.Tuple (Tuple(..))
+import Foreign.Object (Object, toAscUnfoldable)
+
+queryString :: Object Json -> String
+queryString params = joinWith "&" (map pair pairs)
+  where
+    pairs = toAscUnfoldable params :: Array (Tuple String Json)
+    pair (Tuple key value) = key <> "=" <> fromMaybe (stringify value) (toString value)
+'''

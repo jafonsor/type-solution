@@ -28,5 +28,15 @@ function unique(items) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+unique :: forall a. Eq a => Array a -> Array a
+unique items = ...'''
+reference = '''
+import Prelude
+import Data.Array (elem, foldl, snoc)
+
+unique :: forall a. Eq a => Array a -> Array a
+unique items = foldl keep [] items
+  where
+    keep seen item = if elem item seen then seen else snoc seen item
+'''

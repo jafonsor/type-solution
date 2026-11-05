@@ -33,5 +33,19 @@ function getPath(obj, path) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+getPath :: Json -> String -> Json
+getPath json path = ...'''
+reference = '''
+import Prelude
+import Data.Argonaut.Core (Json, jsonNull, toObject)
+import Data.Array (foldl)
+import Data.Maybe (fromMaybe)
+import Data.String (Pattern(..), split)
+import Foreign.Object (lookup)
+
+getPath :: Json -> String -> Json
+getPath json path = foldl step json (split (Pattern ".") path)
+  where
+    step value key = fromMaybe jsonNull (toObject value >>= lookup key)
+'''

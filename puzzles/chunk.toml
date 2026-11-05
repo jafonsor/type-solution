@@ -28,5 +28,15 @@ function chunk(items, size) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+chunk :: forall a. Array a -> Int -> Array (Array a)
+chunk items size = ...'''
+reference = '''
+import Prelude
+import Data.Array (drop, null, take)
+
+chunk :: forall a. Array a -> Int -> Array (Array a)
+chunk items size
+  | null items = []
+  | otherwise = [take size items] <> chunk (drop size items) size
+'''

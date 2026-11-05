@@ -28,5 +28,15 @@ function grid(rows, cols, value) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+grid :: forall a. Int -> Int -> a -> Array (Array a)
+grid rows cols value = ...'''
+reference = '''
+import Prelude
+import Data.Array (replicate)
+
+grid :: forall a. Int -> Int -> a -> Array (Array a)
+grid rows cols value = replicate rows row
+  where
+    row = replicate cols value
+'''

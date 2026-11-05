@@ -21,10 +21,13 @@ const toJson = (v) =>
       : Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toJson(x)]))
     : v;
 
-// PureScript functions take one argument at a time.
-const call = (f, args) => args.reduce((g, a) => g(a), f);
+// PureScript functions take one argument at a time, after one per constraint
+// in their type (see dictionaryKinds in purs-runner.js). An Eq dictionary is
+// the one Data.Eq builds for JSON values, whose `eq` compares with ===.
+const dictionary = { eq: { eq: (a) => (b) => a === b }, other: {} };
+const call = (f, dicts, args) => [...dicts.map((k) => dictionary[k]), ...args].reduce((g, a) => g(a), f);
 
-const { mainUrl, fn, tests } = workerData;
+const { mainUrl, fn, dicts, tests } = workerData;
 try {
   const f = (await import(mainUrl))[fn];
   if (typeof f !== "function") {
@@ -34,7 +37,7 @@ try {
     kind: "results",
     results: tests.map(({ args, expected }) => {
       try {
-        const got = toJson(call(f, structuredClone(args)));
+        const got = toJson(call(f, dicts, structuredClone(args)));
         return { pass: same(got, expected), got: show(got) };
       } catch (err) {
         return { pass: false, got: String(err) };

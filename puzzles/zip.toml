@@ -31,5 +31,17 @@ function zip(a, b) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+zip :: forall a b. Array a -> Array b -> Array (Tuple a b)
+zip xs ys = ...'''
+reference = '''
+import Prelude
+import Data.Array (uncons)
+import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
+
+zip :: forall a b. Array a -> Array b -> Array (Tuple a b)
+zip xs ys = case uncons xs, uncons ys of
+  Just a, Just b -> [ Tuple a.head b.head ] <> zip a.tail b.tail
+  _, _ -> []
+'''

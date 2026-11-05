@@ -29,5 +29,15 @@ function flatten(lists) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+flatten :: forall a. Array (Array a) -> Array a
+flatten lists = ...'''
+reference = '''
+import Prelude
+import Data.Array (foldl)
+
+flatten :: forall a. Array (Array a) -> Array a
+flatten lists = foldl join [] lists
+  where
+    join result list = result <> list
+'''

@@ -29,5 +29,17 @@ function pick(obj, keys) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+pick :: forall a. Object a -> Array String -> Object a
+pick obj keys = ...'''
+reference = '''
+import Prelude
+import Data.Array (mapMaybe)
+import Data.Tuple (Tuple(..))
+import Foreign.Object (Object, fromFoldable, lookup)
+
+pick :: forall a. Object a -> Array String -> Object a
+pick obj keys = fromFoldable (mapMaybe entry keys)
+  where
+    entry key = Tuple key <$> lookup key obj
+'''

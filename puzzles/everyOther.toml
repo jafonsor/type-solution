@@ -28,5 +28,16 @@ function everyOther(items) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+everyOther :: forall a. Array a -> Array a
+everyOther items = ...'''
+reference = '''
+import Prelude
+import Data.Array (catMaybes, mapWithIndex)
+import Data.Maybe (Maybe(..))
+
+everyOther :: forall a. Array a -> Array a
+everyOther items = catMaybes (mapWithIndex pick items)
+  where
+    pick i item = if i `mod` 2 == 0 then Just item else Nothing
+'''

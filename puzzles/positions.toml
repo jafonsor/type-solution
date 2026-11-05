@@ -28,5 +28,16 @@ function positions(items, value) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+positions :: forall a. Eq a => Array a -> a -> Array Int
+positions items value = ...'''
+reference = '''
+import Prelude
+import Data.Array (catMaybes, mapWithIndex)
+import Data.Maybe (Maybe(..))
+
+positions :: forall a. Eq a => Array a -> a -> Array Int
+positions items value = catMaybes (mapWithIndex check items)
+  where
+    check i item = if item == value then Just i else Nothing
+'''
