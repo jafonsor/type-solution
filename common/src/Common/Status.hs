@@ -26,7 +26,7 @@ statusText p h r = case r.phase of
     Just (Results rs) -> tshow (length (filter (.passed) rs)) <> "/" <> tshow (length rs) <> " tests pass"
     Just (SyntaxError _) -> "doesn't parse yet"
     Just (Crashed _) -> "crashed"
-    Just TimedOut -> "timed out"
+    Just (TimedOut _) -> "timed out"
     Nothing -> ""
   Paused -> "Paused. Esc to carry on."
   Skipped -> "Skipped."

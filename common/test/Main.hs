@@ -191,9 +191,9 @@ suite = TestList
       r.outcome @?= Just o
 
   , "a timeout is a failed check" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 TimedOut]
+      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 (TimedOut "Stopped")]
       r.phase @?= Checked
-      r.outcome @?= Just TimedOut
+      r.outcome @?= Just (TimedOut "Stopped")
 
   , "no results is not a pass" ~: do
       let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 (Results [])]
@@ -310,7 +310,7 @@ suite = TestList
             [ (newRun.phase, menuOpen newRun)
             , let r = run typing in (r.phase, menuOpen r)
             , let r = run (typing <> [CheckStarted 1]) in (r.phase, menuOpen r)
-            , let r = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 TimedOut]) in (r.phase, menuOpen r)
+            , let r = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 (TimedOut "Stopped")]) in (r.phase, menuOpen r)
             , let r = run (typing <> [Escaped (at 2)]) in (r.phase, menuOpen r)
             , let r = run [Escaped (at 1)] in (r.phase, menuOpen r)
             , let r = run toPass in (r.phase, menuOpen r)
@@ -339,7 +339,7 @@ suite = TestList
       after (Results [pass, failWith, failWith]) @?= "1/3 tests pass"
       after (SyntaxError "x") @?= "doesn't parse yet"
       after (Crashed "x") @?= "crashed"
-      after TimedOut @?= "timed out"
+      after (TimedOut "x") @?= "timed out"
 
   , "the pass line gives the time, words per minute and backspaces, and no Esc hint" ~: do
       let r = run [ Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, Pressed 0 Backspace
@@ -392,7 +392,7 @@ suite = TestList
   , "the best is never shown during a Run" ~: do
       let h = history [storedRun "fizzBuzz" 1]
           during = [ newRun, run typing, run (typing <> [CheckStarted 1])
-                   , run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 TimedOut])
+                   , run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 (TimedOut "Stopped")])
                    , run (typing <> [Escaped (at 2)]), run [Escaped (at 1)] ]
       map (statusText fizzBuzz h) during @?= map statusOf during
 
@@ -736,12 +736,20 @@ suite = TestList
       checkRequest p "" @?= "{\"code\":\"\",\"fn\":\"fizzBuzz\",\"tests\":[{\"args\":[{\"a\":[{\"x\":2,\"y\":1}],\"b\":1}],\"expected\":{\"B\":3,\"_\":2,\"z\":1}}]}"
 
   , "a results reply parses" ~: do
-      parseReply "{\"kind\":\"results\",\"results\":[{\"pass\":true,\"got\":\"\\\"Fizz\\\"\"}]}"
+      parseReply "{\"status\":\"pass\",\"message\":\"\",\"results\":[{\"pass\":true,\"got\":\"\\\"Fizz\\\"\"}]}"
         @?= Results [TestResult { passed = True, got = "\"Fizz\"" }]
+      parseReply "{\"status\":\"fail\",\"message\":\"\",\"results\":[{\"pass\":false,\"got\":\"1\"}]}"
+        @?= Results [TestResult { passed = False, got = "1" }]
 
   , "an error reply parses as a crash" ~: do
-      parseReply "{\"kind\":\"error\",\"message\":\"ReferenceError: x is not defined\"}"
+      parseReply "{\"status\":\"error\",\"kind\":\"crash\",\"message\":\"ReferenceError: x is not defined\",\"line\":1,\"column\":0}"
         @?= Crashed "ReferenceError: x is not defined"
+
+  , "a syntax error reply and a timeout reply parse as themselves" ~: do
+      parseReply "{\"status\":\"error\",\"kind\":\"syntax\",\"message\":\"Unexpected token (1:8)\",\"line\":1,\"column\":8,\"range\":{\"from\":8,\"to\":9}}"
+        @?= SyntaxError "Unexpected token (1:8)"
+      parseReply "{\"status\":\"error\",\"kind\":\"timeout\",\"message\":\"Stopped after 1.0 s: an infinite loop?\",\"line\":1,\"column\":0}"
+        @?= TimedOut "Stopped after 1.0 s: an infinite loop?"
 
   , "an unreadable reply is a crash, not a pass" ~: do
       case parseReply "nonsense" of

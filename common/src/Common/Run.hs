@@ -57,7 +57,9 @@ data Outcome
   = SyntaxError Text
   | Crashed Text
     -- ^ The Solution threw before any test ran, or isn't a function.
-  | TimedOut
+  | TimedOut Text
+    -- ^ The Language's own message: how long it waited, and why that is
+    -- probably a loop.
   | Results [TestResult]
     -- ^ One per test, in the Puzzle's order.
   deriving stock (Eq, Show)
@@ -354,8 +356,11 @@ checkRequest p src = T.decodeUtf8 $ LBS.toStrict $ Aeson.encode $ object
   , "tests" .= [ object [ "args" .= t.args, "expected" .= t.expected ] | t <- p.tests ]
   ]
 
--- | The worker's reply: @{kind: "results", results: [{pass, got}]}@ or
--- @{kind: "error", message}@. Anything else counts as a crash.
+-- | The Language Checker's result (static/editor/src/languages.mjs):
+-- @{status: "pass" | "fail", results: [{pass, got}]}@, or
+-- @{status: "error", kind: "syntax" | "timeout" | other, message}@, with
+-- line, column and range the status line will use later. Anything else
+-- counts as a crash.
 parseReply :: Text -> Outcome
 parseReply txt =
   case Aeson.decodeStrict (T.encodeUtf8 txt) >>= parseMaybe reply of
@@ -363,10 +368,14 @@ parseReply txt =
     Nothing -> Crashed "The test runner sent an unreadable reply."
   where
     reply :: Value -> Parser Outcome
-    reply = withObject "reply" \o -> o .: "kind" >>= \case
-      ("results" :: Text) -> Results <$> o .: "results"
-      "error" -> Crashed <$> o .: "message"
-      _ -> fail "unknown kind"
+    reply = withObject "reply" \o -> o .: "status" >>= \case
+      ("pass" :: Text) -> Results <$> o .: "results"
+      "fail" -> Results <$> o .: "results"
+      "error" -> o .: "kind" >>= \case
+        ("syntax" :: Text) -> SyntaxError <$> o .: "message"
+        "timeout" -> TimedOut <$> o .: "message"
+        _ -> Crashed <$> o .: "message"
+      _ -> fail "unknown status"
 
 instance FromJSON TestResult where
   parseJSON = withObject "TestResult" \o ->

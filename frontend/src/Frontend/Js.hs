@@ -1,20 +1,23 @@
 {-# LANGUAGE NoOverloadedLists #-}
 -- | The JavaScript seam: the CodeMirror shim (static/editor, loaded as
--- @window.TypeSolution@) and the test-runner worker (static/src/js/runner.js).
+-- @window.TypeSolution@), which holds the Languages, and JavaScript's
+-- test-runner worker (static/src/js/runner.js).
 -- Reflex sees only document text, the Escape key, the key presses a Run
 -- counts (with their times), the worker's replies and the stored Runs (as
 -- JSON text). Storage is reached only through the shim; nothing goes over
 -- the network.
 module Frontend.Js
-  ( Editor
+  ( Language
+  , javascript
+  , Editor
   , createEditor
   , setDoc
   , setReadOnly
+  , setLanguage
   , focusEditor
   , focusElement
   , setHidden
   , random
-  , syntaxError
   , saveRun
   , loadRuns
   , Checker
@@ -33,13 +36,22 @@ import Language.Javascript.JSaddle
 
 import Common.Run (Key, Millis, keyFromChar)
 
+-- | A Language by name, as the shim's registry knows it (static/editor/src/
+-- languages.mjs). The shim holds everything Language-specific: the editor's
+-- mode and the Checker.
+newtype Language = Language Text
+
+javascript :: Language
+javascript = Language "javascript"
+
 newtype Editor = Editor JSVal
 
 -- | Mount an editor in the element. The callbacks get the whole document on
 -- every change the player makes, the Escape key (pressed anywhere on the
--- page), and each key press a Run counts with its time.
-createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Millis -> Key -> JSM ()) -> JSM Editor
-createEditor parent onChange onEscape onKey = do
+-- page), and each key press a Run counts with its time. The Language gives
+-- the editor its mode.
+createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Millis -> Key -> JSM ()) -> Language -> JSM Editor
+createEditor parent onChange onEscape onKey (Language name) = do
   changed <- function \_ _ args -> forM_ (take 1 args) \a ->
     fromJSValUnchecked a >>= onChange
   escaped <- function \_ _ _ -> onEscape
@@ -53,11 +65,15 @@ createEditor parent onChange onEscape onKey = do
         [c] -> onKey t (keyFromChar c)
         _ -> pure ()
     _ -> pure ()
-  Editor <$> (jsg ("TypeSolution" :: Text) # ("createEditor" :: Text) $ (unElement parent, changed, escaped, pressed))
+  Editor <$> (jsg ("TypeSolution" :: Text) # ("createEditor" :: Text) $ (unElement parent, changed, escaped, pressed, name))
 
 -- | Replace the document, without calling the change callback.
 setDoc :: Editor -> Text -> JSM ()
 setDoc (Editor e) t = void $ e # ("setDoc" :: Text) $ [t]
+
+-- | Swap the editor's mode for the Language's; text and history stay.
+setLanguage :: Editor -> Language -> JSM ()
+setLanguage (Editor e) (Language name) = void $ e # ("setLanguage" :: Text) $ [name]
 
 -- | Read-only: the editor takes no typing and Tab moves the focus on.
 setReadOnly :: Editor -> Bool -> JSM ()
@@ -77,12 +93,6 @@ setHidden el b = void $ unElement el # ("toggleAttribute" :: Text) $ (("hidden" 
 random :: JSM Double
 random = (jsg ("TypeSolution" :: Text) # ("random" :: Text) $ ()) >>= fromJSValUnchecked
 
--- | The JavaScript parser's message if the code doesn't parse.
-syntaxError :: Text -> JSM (Maybe Text)
-syntaxError code = do
-  r <- jsg ("TypeSolution" :: Text) # ("syntaxError" :: Text) $ [code]
-  maybeNullOrUndefined r >>= traverse fromJSValUnchecked
-
 -- | Keep a finished Run (as JSON) in the browser's storage.
 saveRun :: Text -> JSM ()
 saveRun json = void $ jsg ("TypeSolution" :: Text) # ("saveRun" :: Text) $ [json]
@@ -93,18 +103,19 @@ saveRun json = void $ jsg ("TypeSolution" :: Text) # ("saveRun" :: Text) $ [json
 loadRuns :: JSM Text
 loadRuns = (jsg ("TypeSolution" :: Text) # ("loadRuns" :: Text) $ ()) >>= fromJSValUnchecked
 
--- | The test-runner workers (static/editor/src/checker.mjs): a spare is
--- started ahead of time, and the callback the check in flight replies to.
+-- | The Language's Checker (static/editor/src/run-check.mjs): the callback
+-- the check in flight replies to. Parsing, workers and timeouts are the
+-- Language's own.
 data Checker = Checker JSVal (IORef (Maybe Function))
 
--- | Start the first spare worker, from the script at the URL.
-newChecker :: Text -> JSM Checker
-newChecker url = do
-  pool <- jsg ("TypeSolution" :: Text) # ("createChecker" :: Text) $ [url]
+-- | The Checker for the Language, given the URL of its runner script.
+newChecker :: Text -> Language -> JSM Checker
+newChecker url (Language name) = do
+  pool <- jsg ("TypeSolution" :: Text) # ("createChecker" :: Text) $ (url, name)
   Checker pool <$> liftIO (newIORef Nothing)
 
--- | Run the request on a fresh worker (the spare, which is replaced by a
--- new one) and pass its reply on. Any check still in flight is stopped first.
+-- | Run the request and pass its reply on (see 'Common.Run.parseReply').
+-- Any check still in flight is stopped first.
 startCheck :: Checker -> Text -> (Text -> JSM ()) -> JSM ()
 startCheck c@(Checker pool ref) request onReply = do
   stopCheck c
@@ -113,7 +124,7 @@ startCheck c@(Checker pool ref) request onReply = do
   void $ pool # ("start" :: Text) $ (request, replied)
   liftIO $ writeIORef ref (Just replied)
 
--- | Terminate the check in flight, if any.
+-- | Stop the check in flight, if any; it never replies.
 stopCheck :: Checker -> JSM ()
 stopCheck (Checker pool ref) = do
   current <- liftIO $ atomicModifyIORef' ref (Nothing,)

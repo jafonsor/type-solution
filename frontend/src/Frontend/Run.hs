@@ -27,10 +27,6 @@ import Frontend.Js
 quietBeforeCheck :: NominalDiffTime
 quietBeforeCheck = 0.4
 
--- | How long a check may run before it counts as a timeout.
-checkTimeout :: NominalDiffTime
-checkTimeout = 1
-
 runWidget
   :: ( DomBuilder t m
      , DomBuilderSpace m ~ GhcjsDomSpace
@@ -42,10 +38,12 @@ runWidget
      , MonadJSM m
      , MonadJSM (Performable m)
      )
-  => Text
-     -- ^ URL of the test-runner worker script.
+  => Language
+     -- ^ The current Language: the editor's mode and the Checker.
+  -> Text
+     -- ^ URL of the Language's test-runner worker script.
   -> m ()
-runWidget workerUrl = mdo
+runWidget language workerUrl = mdo
   -- The first Puzzle is picked here, in the browser, so each visit differs.
   firstPuzzle <- liftJSM (randomPuzzle <$> random)
   dPuzzle <- holdDyn firstPuzzle ePuzzle
@@ -68,8 +66,8 @@ runWidget workerUrl = mdo
   (eReply, fireReply) <- newTriggerEvent
   (eKey, fireKey) <- newTriggerEvent
   editor <- liftJSM $ createEditor (_element_raw box)
-    (liftIO . fireCode) (liftIO (fireEscape ())) (\t k -> liftIO (fireKey (Pressed t k)))
-  checker <- liftJSM (newChecker workerUrl)
+    (liftIO . fireCode) (liftIO (fireEscape ())) (\t k -> liftIO (fireKey (Pressed t k))) language
+  checker <- liftJSM (newChecker workerUrl language)
   -- The editor is built before it's on the page, so it's focused once it
   -- is: the player can start typing straight away.
   eBuilt <- delay 0 =<< getPostBuild
@@ -90,32 +88,17 @@ runWidget workerUrl = mdo
   eCheck <- zipListWithEvent (,) [1 :: Int ..] $
     attachWith (,) (current dPuzzle) (gate (underWay <$> current dRun) eQuiet)
 
-  -- Code that doesn't parse fails at once; the rest goes to a worker.
+  -- The Language's Checker does the rest: parsing, running, and its own
+  -- timeouts. A newer check or an edit makes an older reply never arrive.
   eStarted <- performEvent $ ffor eCheck \(n, (puzzle, src)) -> liftJSM do
-    syntaxError src >>= \case
-      Just msg -> do
-        t <- liftIO getCurrentTime
-        pure (n, False, [CheckStarted n, CheckFinished t n (SyntaxError msg)])
-      Nothing -> do
-        startCheck checker (checkRequest puzzle src) \reply ->
-          liftIO (fireReply (n, reply))
-        pure (n, True, [CheckStarted n])
+    startCheck checker (checkRequest puzzle src) \reply ->
+      liftIO (fireReply (n, reply))
+    pure [CheckStarted n]
 
   eFinished <- performEvent $ ffor eReply \(n, reply) -> do
     liftJSM (stopCheck checker)
     t <- liftIO getCurrentTime
     pure [CheckFinished t n (parseReply reply)]
-
-  -- A check still awaited when its time is up is stopped and times out.
-  eDeadline <- delay checkTimeout $ fmapMaybe
-    (\(n, toWorker, _) -> if toWorker then Just n else Nothing) eStarted
-  let eOverdue = attachWithMaybe
-        (\r n -> if r.awaiting == Just n then Just n else Nothing)
-        (current dRun) eDeadline
-  eTimedOut <- performEvent $ ffor eOverdue \n -> do
-    liftJSM (stopCheck checker)
-    t <- liftIO getCurrentTime
-    pure [CheckFinished t n TimedOut]
 
   -- Esc skips, pauses or carries on; the Run decides which. A check in
   -- flight keeps running: its outcome still counts.
@@ -132,7 +115,7 @@ runWidget workerUrl = mdo
       NewRandom -> randomPuzzle <$> random
 
   dRun <- foldDyn (\es r -> foldl (flip step) r es) newRun $ mergeWith (<>)
-    [ eEdited, (\(_, _, es) -> es) <$> eStarted, eFinished, eTimedOut, eEscaped
+    [ eEdited, eStarted, eFinished, eEscaped
     , [NewRunStarted] <$ ePuzzle, (: []) <$> eKey ]
 
   -- A Run that has just passed is kept in the browser; one given up isn't.
@@ -240,6 +223,5 @@ feedback puzzle r = case r.outcome of
       elClass "code" "got" $ text actual
   Just (SyntaxError msg) -> elClass "div" "failure" $ text ("Syntax error: " <> msg)
   Just (Crashed msg) -> elClass "div" "failure" $ text msg
-  Just TimedOut -> elClass "div" "failure" $
-    text ("Stopped after " <> secondsText checkTimeout <> ": an infinite loop?")
+  Just (TimedOut msg) -> elClass "div" "failure" $ text msg
   Nothing -> blank

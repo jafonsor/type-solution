@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 22
 
 # 26: Move JavaScript behind the four seams
@@ -10,5 +10,5 @@ Spec "Languages": Checker, Editor mode, Import rules, bank folder. Refactor the 
 
 ## Acceptance
 
-- No behaviour change for JavaScript players; existing tests pass.
-- A Language is a value with the four seams; the run and the UI take the current Language as an argument.
+- [x] No behaviour change for JavaScript players; existing tests pass.
+- [x] A Language is a value with the four seams; the run and the UI take the current Language as an argument.

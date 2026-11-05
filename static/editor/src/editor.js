@@ -5,7 +5,9 @@
 // CSS variable (static/src/css/app.css), so the editor follows the page's
 // light and dark schemes.
 //
-//   const editor = TypeSolution.createEditor(parent, onChange, onEscape, onKey);
+//   const editor = TypeSolution.createEditor(parent, onChange, onEscape, onKey, language);
+//     // language is a Language's name (languages.mjs; "javascript" if omitted
+//     // or unknown): the editor's mode, i.e. colouring and indent rules.
 //     // onKey(key, time) gets each key press a Run counts, while the editor
 //     // is editable: key is the character the browser typed, or " ", "\n",
 //     // "\t" or "\b" for Space, Enter, Tab and Backspace (Common.Run's
@@ -15,28 +17,34 @@
 //     // menu's buttons included), so it works while the editor is read-only.
 //   editor.setDoc(text);   // replace the document without calling onChange
 //   editor.setReadOnly(b); // true: no typing and Tab moves focus; false: back
+//   editor.setLanguage(name); // swap only the mode, keeping text and history
 //   editor.focus();
 //   TypeSolution.focus(element)     // focus a page element, e.g. a button
 //   TypeSolution.random()           // Math.random(), a number in [0, 1)
-//   TypeSolution.syntaxError(code)  // null, or the parser's message
 //   TypeSolution.saveRun(json)      // append a finished Run to browser storage
 //                                   // (storage.mjs: what happens when it's full)
 //   TypeSolution.loadRuns()         // the stored Runs as JSON text, "[]" if none
 //                                   // or storage can't be read; never throws
-//   TypeSolution.createChecker(url) // test-runner workers from the script at
-//                                   // url, one spare always started ahead
-//                                   // (checker.mjs); .start(request, onReply)
-//                                   // runs a check on a fresh worker, .stop()
-//                                   // terminates it
+//   TypeSolution.createChecker(url, language)
+//                                   // the Language's Checker (languages.mjs;
+//                                   // JavaScript if omitted or unknown), given
+//                                   // the runner script's url;
+//                                   // .start(request, onReply) runs a check
+//                                   // (request: {code, fn, tests} as JSON
+//                                   // text; onReply gets the result as JSON
+//                                   // text: status, message, line, column,
+//                                   // results; see languages.mjs), .stop() ends
+//                                   // it. A check a newer one or stop() ended
+//                                   // never replies.
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState, Prec, Compartment } from "@codemirror/state";
 import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
-import { javascript } from "@codemirror/lang-javascript";
 import { tags as t } from "@lezer/highlight";
-import * as acorn from "acorn";
 import * as storage from "./storage.mjs";
-import { createChecker } from "./checker.mjs";
+import { languageNamed } from "./languages.mjs";
+import { createCheckSession } from "./run-check.mjs";
+import { createMode } from "./editor-mode.mjs";
 
 const theme = EditorView.theme({
   "&": { color: "var(--editor-fg)", backgroundColor: "var(--editor-bg)" },
@@ -90,9 +98,10 @@ function editing(on) {
     : [EditorState.readOnly.of(true), EditorView.editable.of(false)];
 }
 
-function createEditor(parent, onChange, onEscape, onKey) {
+function createEditor(parent, onChange, onEscape, onKey, languageName) {
   let programmatic = false;
-  const mode = new Compartment();
+  const mode = new Compartment(); // editing or read-only
+  const language = createMode(languageNamed(languageName)); // the Language's mode
   // Esc is caught for the whole page, before the editor sees it: once the
   // menu is open the focus is on its buttons, not in the editor.
   document.addEventListener("keydown", (e) => {
@@ -107,7 +116,7 @@ function createEditor(parent, onChange, onEscape, onKey) {
       doc: "",
       extensions: [
         lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-        theme, syntaxHighlighting(highlight), javascript(),
+        theme, syntaxHighlighting(highlight), language.extension,
         keymap.of([...defaultKeymap, ...historyKeymap]),
         mode.of(editing(true)),
         Prec.highest(EditorView.domEventHandlers({
@@ -141,17 +150,11 @@ function createEditor(parent, onChange, onEscape, onKey) {
     setReadOnly(readOnly) {
       view.dispatch({ effects: mode.reconfigure(editing(!readOnly)) });
     },
+    setLanguage(name) {
+      view.dispatch({ effects: language.switchTo(languageNamed(name)) });
+    },
     focus() { view.focus(); },
   };
-}
-
-function syntaxError(code) {
-  try {
-    acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
-    return null;
-  } catch (err) {
-    return err.message;
-  }
 }
 
 // Finished Runs live in this browser only. Storage can be unavailable
@@ -176,8 +179,10 @@ function loadRuns() {
 }
 
 window.TypeSolution = {
-  createEditor, syntaxError, saveRun, loadRuns,
-  createChecker(url) { return createChecker(Worker, url); },
+  createEditor, saveRun, loadRuns,
+  createChecker(url, languageName) {
+    return createCheckSession(languageNamed(languageName), { Worker, url });
+  },
   focus(element) { element.focus(); },
   random() { return Math.random(); },
 };
