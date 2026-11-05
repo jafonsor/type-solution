@@ -1,18 +1,7 @@
 function = "everyOther"
-signature = "everyOther(items)"
 prompt = """
 Return the items at positions 0, 2, 4 and so on, counting from 0. \
 For example, everyOther(["a","b","c","d","e"]) → ["a","c","e"]."""
-
-reference = '''
-function everyOther(items) {
-  const picked = [];
-  for (let i = 0; i < items.length; i += 2) {
-    picked.push(items[i]);
-  }
-  return picked;
-}
-'''
 
 [[tests]]
 args = [["a", "b", "c", "d", "e"]]
@@ -25,3 +14,19 @@ expected = [1, 3]
 [[tests]]
 args = [[9]]
 expected = [9]
+
+[javascript]
+signature = "everyOther(items)"
+reference = '''
+function everyOther(items) {
+  const picked = [];
+  for (let i = 0; i < items.length; i += 2) {
+    picked.push(items[i]);
+  }
+  return picked;
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

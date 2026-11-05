@@ -59,7 +59,7 @@ runWidget workerUrl = mdo
   dHistoryBefore <- holdDyn (history stored) (tag (current dHistory) ePuzzle)
 
   elClass "header" "puzzle" do
-    elClass "h1" "signature" $ dynText ((.signature) <$> dPuzzle)
+    elClass "h1" "signature" $ dynText ((.javascript.signature) <$> dPuzzle)
     elClass "p" "prompt" $ dynText ((.prompt) <$> dPuzzle)
 
   (box, _) <- elClass' "div" "editor" blank

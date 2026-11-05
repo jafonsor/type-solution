@@ -1,16 +1,18 @@
 function = "double"
-signature = "double(x)"
 prompt = "Return x times two."
+
+[[tests]]
+args = [2]
+expected = 4
+
+[javascript]
+signature = "double(x)"
 reference = '''
 function double(x) {
   return x * 2;
 }
 throw new Error("this Reference Solution crashes before any test runs");
 '''
-
-[[tests]]
-args = [2]
-expected = 4
 
 [purescript]
 signature = "double :: Int -> Int"

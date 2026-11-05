@@ -1,18 +1,7 @@
 function = "unique"
-signature = "unique(items)"
 prompt = """
 Remove repeated items from a list, keeping each item where it first \
 appears. For example, unique([1,2,2,3,1]) → [1,2,3]."""
-
-reference = '''
-function unique(items) {
-  const seen = [];
-  for (const item of items) {
-    if (!seen.includes(item)) seen.push(item);
-  }
-  return seen;
-}
-'''
 
 [[tests]]
 args = [[1, 2, 2, 3, 1]]
@@ -25,3 +14,19 @@ expected = ["b", "a", "c"]
 [[tests]]
 args = [[4, 4, 4]]
 expected = [4]
+
+[javascript]
+signature = "unique(items)"
+reference = '''
+function unique(items) {
+  const seen = [];
+  for (const item of items) {
+    if (!seen.includes(item)) seen.push(item);
+  }
+  return seen;
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

@@ -1,6 +1,12 @@
 function = "keys"
-signature = "keys(obj)"
 prompt = "Return the object's keys."
+
+[[tests]]
+args = [{ b = 1, a = 2 }]
+expected = ["b", "a"]
+
+[javascript]
+signature = "keys(obj)"
 reference = '''
 function keys(obj) {
   // Depends on the order the argument's keys arrive in, which the file
@@ -8,10 +14,6 @@ function keys(obj) {
   return Object.keys(obj);
 }
 '''
-
-[[tests]]
-args = [{ b = 1, a = 2 }]
-expected = ["b", "a"]
 
 [purescript]
 signature = "x :: Int"

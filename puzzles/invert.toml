@@ -1,18 +1,7 @@
 function = "invert"
-signature = "invert(obj)"
 prompt = """
 Swap an object's keys and values; the values are distinct strings. \
 For example, invert({a: "x", b: "y"}) → {x: "a", y: "b"}."""
-
-reference = '''
-function invert(obj) {
-  const result = {};
-  for (const [key, value] of Object.entries(obj)) {
-    result[value] = key;
-  }
-  return result;
-}
-'''
 
 [[tests]]
 args = [{ a = "x", b = "y" }]
@@ -25,3 +14,19 @@ expected = { stop = "red", go = "green", wait = "amber" }
 [[tests]]
 args = [{}]
 expected = {}
+
+[javascript]
+signature = "invert(obj)"
+reference = '''
+function invert(obj) {
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    result[value] = key;
+  }
+  return result;
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

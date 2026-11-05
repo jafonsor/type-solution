@@ -1,17 +1,8 @@
 function = "isLeapYear"
-signature = "isLeapYear(year)"
 prompt = """
 Return true if the year is a leap year: divisible by 4, except that a year \
 divisible by 100 must also be divisible by 400. For example, \
 isLeapYear(2024) → true, and isLeapYear(1900) → false."""
-
-reference = '''
-function isLeapYear(year) {
-  const byFour = year % 4 === 0;
-  const byHundred = year % 100 === 0;
-  return byFour && (!byHundred || year % 400 === 0);
-}
-'''
 
 [[tests]]
 args = [2024]
@@ -28,3 +19,17 @@ expected = false
 [[tests]]
 args = [2000]
 expected = true
+
+[javascript]
+signature = "isLeapYear(year)"
+reference = '''
+function isLeapYear(year) {
+  const byFour = year % 4 === 0;
+  const byHundred = year % 100 === 0;
+  return byFour && (!byHundred || year % 400 === 0);
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

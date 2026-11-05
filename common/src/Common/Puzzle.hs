@@ -4,6 +4,7 @@
 -- "Common.Bank" holds them all.
 module Common.Puzzle
   ( Puzzle (..)
+  , LanguageTable (..)
   , PuzzleTest (..)
   , callText
   , valueText
@@ -37,13 +38,25 @@ data Puzzle = Puzzle
     -- recorded under it. Two Puzzles may share a function name, never this.
   , function :: Text
     -- ^ The name the Solution must define, and the tests call.
-  , signature :: Text
   , prompt :: Text
+  , javascript :: LanguageTable
+    -- ^ The JavaScript table. The app uses only this one until the Language
+    -- dropdown lands.
+  , purescript :: LanguageTable
+    -- ^ The PureScript table. Every Puzzle has one (Design Contract L4); the
+    -- app doesn't read it yet.
+  , tests :: [PuzzleTest]
+    -- ^ Never shown, but a failed one may be described by 'callText'.
+  }
+  deriving stock (Eq, Show, Lift)
+
+-- | What a Puzzle holds for one Language: its @[<language>]@ table in the
+-- Puzzle file.
+data LanguageTable = LanguageTable
+  { signature :: Text
   , reference :: Text
     -- ^ The Reference Solution, which proves the tests can be passed. It
     -- travels in the bundle but is never shown (Design Contract I1).
-  , tests :: [PuzzleTest]
-    -- ^ Never shown, but a failed one may be described by 'callText'.
   }
   deriving stock (Eq, Show, Lift)
 
@@ -66,7 +79,8 @@ valueText = T.decodeUtf8 . LBS.toStrict . Aeson.encode
 -- * Puzzle files
 
 -- | Reads a Puzzle file, given its identity and its TOML text. A missing
--- key, an unknown one or a value of the wrong type is an error.
+-- key or table (every Puzzle has a @[javascript]@ and a @[purescript]@
+-- table), an unknown one or a value of the wrong type is an error.
 parsePuzzle :: Text -> Text -> Either String Puzzle
 parsePuzzle ident src = case Toml.decode src of
   Toml.Success [] (PuzzleFile p) -> Right (p ident)
@@ -105,13 +119,15 @@ newtype PuzzleFile = PuzzleFile (Text -> Puzzle)
 instance Toml.FromValue PuzzleFile where
   fromValue = Toml.parseTableFromValue do
     f <- Toml.reqKey "function"
-    s <- Toml.reqKey "signature"
     p <- Toml.reqKey "prompt"
-    r <- Toml.reqKey "reference"
+    js <- Toml.reqKeyOf "javascript" languageTable
+    ps <- Toml.reqKeyOf "purescript" languageTable
     ts <- Toml.reqKeyOf "tests" (Toml.listOf \_ -> Toml.parseTableFromValue puzzleTest)
     pure $ PuzzleFile \i -> Puzzle
-      { identity = i, function = f, signature = s, prompt = p, reference = r, tests = ts }
+      { identity = i, function = f, prompt = p, javascript = js, purescript = ps, tests = ts }
     where
+      languageTable = Toml.parseTableFromValue $
+        LanguageTable <$> Toml.reqKey "signature" <*> Toml.reqKey "reference"
       puzzleTest = PuzzleTest
         <$> Toml.reqKeyOf "args" (Toml.listOf \_ -> json)
         <*> Toml.reqKeyOf "expected" json

@@ -1,18 +1,8 @@
 function = "queryString"
-signature = "queryString(params)"
 prompt = """
 Build a query string from an object: each key and value joined by =, the \
 pairs joined by &, keys in alphabetical order; an empty object gives "". \
 For example, queryString({q: "cats", page: 2}) → "page=2&q=cats"."""
-
-reference = '''
-function queryString(params) {
-  return Object.keys(params)
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join('&');
-}
-'''
 
 [[tests]]
 args = [{ q = "cats", page = 2 }]
@@ -29,3 +19,18 @@ expected = "id=7"
 [[tests]]
 args = [{}]
 expected = ""
+
+[javascript]
+signature = "queryString(params)"
+reference = '''
+function queryString(params) {
+  return Object.keys(params)
+    .sort()
+    .map((key) => `${key}=${params[key]}`)
+    .join('&');
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

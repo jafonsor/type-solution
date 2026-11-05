@@ -81,7 +81,7 @@ test("a Puzzle file's [purescript] table is read, and run-solutions runs it", as
 
 test("a malformed [purescript] table is a Puzzle file problem", async () => {
   const { readPuzzle } = await import("../puzzle-check.js");
-  const base = `function = "f"\nsignature = "f()"\nprompt = "p"\nreference = "r"\n[[tests]]\nargs = []\nexpected = 1\n`;
+  const base = `function = "f"\nprompt = "p"\n[[tests]]\nargs = []\nexpected = 1\n[javascript]\nsignature = "f()"\nreference = "r"\n`;
   assert.deepEqual(readPuzzle("f", base).problems, ["missing table: [purescript] (every Puzzle needs a Solution in every Language)"]);
   assert.deepEqual(readPuzzle("f", base + `[purescript]\nsignature = "f"\n`).problems, [
     "missing key: reference in [purescript]",

@@ -27,11 +27,11 @@ New Puzzle files and builds: a cabal dev build sees a *new* file only after `com
 
 ## Format
 
-Copy `puzzles/fizzBuzz.toml`. Keys: `function`, `signature`, `prompt`, `reference`, and `[[tests]]` blocks of `args` (a list) and `expected`; any other key fails the build.
+Copy `puzzles/fizzBuzz.toml`. Top-level keys: `function`, `prompt`, and `[[tests]]` blocks of `args` (a list) and `expected`. Then a `[javascript]` table with `signature` and `reference` (and a `[purescript]` table with the same two, which a new Puzzle needs too); any other key or table fails the build.
 
 - **Identity is the file name**: `chunk.toml` is the Puzzle `chunk`, and Personal bests key on it, so never rename a committed file. Name it after the function, camelCase.
 - **`prompt`** is shown as one paragraph (line breaks render as spaces). Write it as `"""` text and end each line but the last with `\` so lines join, closing `"""` on the last line, so there is no trailing newline. A `"""` string processes escapes, so keep backslashes out of the prompt's words.
-- **`reference`** goes in a `'''` literal string: no escapes, so the code is exactly what you see.
+- **`reference`** (in `[javascript]`) goes in a `'''` literal string: no escapes, so the code is exactly what you see.
 
 ## Rules
 

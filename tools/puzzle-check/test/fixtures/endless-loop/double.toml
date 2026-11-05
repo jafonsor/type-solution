@@ -1,6 +1,12 @@
 function = "double"
-signature = "double(x)"
 prompt = "Return x times two."
+
+[[tests]]
+args = [2]
+expected = 4
+
+[javascript]
+signature = "double(x)"
 reference = '''
 function double(x) {
   let twice = x * 2;
@@ -8,10 +14,6 @@ function double(x) {
   return twice;
 }
 '''
-
-[[tests]]
-args = [2]
-expected = 4
 
 [purescript]
 signature = "double :: Int -> Int"

@@ -20,7 +20,11 @@ export const timeoutMs = 1000;
 
 // * Reading a Puzzle file
 
-const puzzleKeys = ["function", "signature", "prompt", "reference", "tests"];
+const puzzleKeys = ["function", "prompt", "tests"];
+// The known Language tables, each holding exactly `signature` and `reference`
+// (the build's Puzzle.hs knows the same two).
+const languages = ["javascript", "purescript"];
+const languageKeys = ["signature", "reference"];
 const testKeys = ["args", "expected"];
 
 const isTable = (v) =>
@@ -46,8 +50,8 @@ function jsonProblems(v, where) {
 }
 
 // Reads a Puzzle file's text. Returns {puzzle} or {problems: [message]}.
-// Matches the build's rules: the five keys are required, no other key is
-// allowed, the four texts are strings, `tests` is a list of tables each with
+// Matches the build's rules: `function`, `prompt`, `tests` and a table per
+// Language are required, no other key is allowed, the texts are strings, `tests` is a list of tables each with
 // exactly `args` (a list) and `expected`, all JSON values. Stricter than the
 // build in one way: `tests` must not be empty (a Puzzle nobody can fail
 // proves nothing).
@@ -59,20 +63,26 @@ export function readPuzzle(identity, text) {
     return { problems: [String(err.message ?? err).trim()] };
   }
   // Every Puzzle has a Solution in every Language (.scratch/other-languages/spec.md,
-  // L4): a [purescript] table with `signature` and `reference`. The JavaScript
-  // Solution stays top-level until the Puzzle files migrate. The build's own
-  // parser (Puzzle.hs) must accept the table before one reaches puzzles/.
-  const { purescript, ...rest } = doc;
+  // L4): a table per Language, each with `signature` and `reference`. Like the
+  // build's parser (Puzzle.hs), a missing table, an unknown one or a key
+  // outside the two is an error.
+  const tables = Object.fromEntries(languages.map((l) => [l, doc[l]]));
+  const rest = Object.fromEntries(Object.entries(doc).filter(([k]) => !languages.includes(k)));
   const problems = keyProblems(rest, puzzleKeys, "<top-level>");
-  if (purescript === undefined) problems.push("missing table: [purescript] (every Puzzle needs a Solution in every Language)");
-  else if (!isTable(purescript)) problems.push("purescript must be a table with signature and reference");
-  else {
-    problems.push(...keyProblems(purescript, ["signature", "reference"], "[purescript]"));
-    for (const k of ["signature", "reference"]) {
-      if (k in purescript && typeof purescript[k] !== "string") problems.push(`purescript.${k} must be a string`);
+  for (const language of languages) {
+    const table = tables[language];
+    if (table === undefined) {
+      problems.push(`missing table: [${language}] (every Puzzle needs a Solution in every Language)`);
+    } else if (!isTable(table)) {
+      problems.push(`${language} must be a table with signature and reference`);
+    } else {
+      problems.push(...keyProblems(table, languageKeys, `[${language}]`));
+      for (const k of languageKeys) {
+        if (k in table && typeof table[k] !== "string") problems.push(`${language}.${k} must be a string`);
+      }
     }
   }
-  for (const k of ["function", "signature", "prompt", "reference"]) {
+  for (const k of ["function", "prompt"]) {
     if (k in doc && typeof doc[k] !== "string") problems.push(`${k} must be a string`);
   }
   if ("tests" in doc) {
@@ -99,11 +109,11 @@ export function readPuzzle(identity, text) {
     puzzle: {
       identity,
       function: doc.function,
-      signature: doc.signature,
+      signature: tables.javascript.signature,
       prompt: doc.prompt,
-      reference: doc.reference,
+      reference: tables.javascript.reference,
       tests: doc.tests.map((t) => ({ args: t.args, expected: t.expected })),
-      purescript: { signature: purescript.signature, reference: purescript.reference },
+      purescript: { signature: tables.purescript.signature, reference: tables.purescript.reference },
     },
   };
 }

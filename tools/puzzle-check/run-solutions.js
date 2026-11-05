@@ -21,8 +21,8 @@ export const runners = {
   purescript: purescriptProblems,
 };
 
-// Every Solution a Puzzle holds: [{language, code}]. The JavaScript one is
-// still top-level; every other Language has a table (see readPuzzle).
+// Every Solution a Puzzle holds: [{language, code}], one per Language table
+// (see readPuzzle).
 export function solutionsOf(puzzle) {
   return [
     { language: "javascript", code: puzzle.reference },

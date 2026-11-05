@@ -1,18 +1,7 @@
 function = "dotProduct"
-signature = "dotProduct(a, b)"
 prompt = """
 Multiply the numbers of two equal-length lists position by position and \
 add up the products. For example, dotProduct([1,2,3], [4,5,6]) → 32."""
-
-reference = '''
-function dotProduct(a, b) {
-  let total = 0;
-  for (let i = 0; i < a.length; i++) {
-    total += a[i] * b[i];
-  }
-  return total;
-}
-'''
 
 [[tests]]
 args = [[1, 2, 3], [4, 5, 6]]
@@ -25,3 +14,19 @@ expected = 1
 [[tests]]
 args = [[7], [6]]
 expected = 42
+
+[javascript]
+signature = "dotProduct(a, b)"
+reference = '''
+function dotProduct(a, b) {
+  let total = 0;
+  for (let i = 0; i < a.length; i++) {
+    total += a[i] * b[i];
+  }
+  return total;
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

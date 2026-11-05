@@ -1,19 +1,8 @@
 function = "mergeCounts"
-signature = "mergeCounts(a, b)"
 prompt = """
 Add two objects of counts together key by key; a key found in only one of \
 them keeps its count. For example, mergeCounts({apple: 2, pear: 1}, \
 {apple: 3, fig: 4}) → {apple: 5, pear: 1, fig: 4}."""
-
-reference = '''
-function mergeCounts(a, b) {
-  const total = { ...a };
-  for (const key in b) {
-    total[key] = (total[key] || 0) + b[key];
-  }
-  return total;
-}
-'''
 
 [[tests]]
 args = [{ apple = 2, pear = 1 }, { apple = 3, fig = 4 }]
@@ -30,3 +19,19 @@ expected = { kiwi = 6 }
 [[tests]]
 args = [{ a = 1 }, {}]
 expected = { a = 1 }
+
+[javascript]
+signature = "mergeCounts(a, b)"
+reference = '''
+function mergeCounts(a, b) {
+  const total = { ...a };
+  for (const key in b) {
+    total[key] = (total[key] || 0) + b[key];
+  }
+  return total;
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

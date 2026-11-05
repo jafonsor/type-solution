@@ -100,9 +100,12 @@ fizzBuzz :: Puzzle
 fizzBuzz = Puzzle
   { identity = "fizzBuzz"
   , function = "fizzBuzz"
-  , signature = "fizzBuzz(n)"
   , prompt = "Return \"Fizz\" for multiples of 3, \"Buzz\" for multiples of 5, \"FizzBuzz\" for both, otherwise the number as a string."
-  , reference = "function fizzBuzz(n) {\n  if (n % 15 === 0) return \"FizzBuzz\";\n  if (n % 3 === 0) return \"Fizz\";\n  if (n % 5 === 0) return \"Buzz\";\n  return String(n);\n}\n"
+  , javascript = LanguageTable
+      { signature = "fizzBuzz(n)"
+      , reference = "function fizzBuzz(n) {\n  if (n % 15 === 0) return \"FizzBuzz\";\n  if (n % 3 === 0) return \"Fizz\";\n  if (n % 5 === 0) return \"Buzz\";\n  return String(n);\n}\n"
+      }
+  , purescript = LanguageTable { signature = "fizzBuzz :: Int -> String", reference = "fizzBuzz n = show n" }
   , tests =
       [ PuzzleTest { args = [Number 3], expected = String "Fizz" }
       , PuzzleTest { args = [Number 10], expected = String "Buzz" }
@@ -115,19 +118,31 @@ fizzBuzz = Puzzle
 sampleFile :: [Text]
 sampleFile =
   [ "function = \"double\""
-  , "signature = \"double(x)\""
   , "prompt = \"Return x times two.\""
-  , "reference = \"function double(x) { return x * 2; }\""
   , "[[tests]]"
   , "args = [2]"
   , "expected = 4"
   , "[[tests]]"
   , "args = [[1, 2.5], {a = \"b\"}, true]"
   , "expected = \"x\""
+  , "[javascript]"
+  , "signature = \"double(x)\""
+  , "reference = \"function double(x) { return x * 2; }\""
+  , "[purescript]"
+  , "signature = \"double :: Int -> Int\""
+  , "reference = \"double x = x * 2\""
   ]
 
 parsesTo :: [Text] -> Either String Puzzle
 parsesTo = parsePuzzle "double" . T.unlines
+
+-- | The lines without a table header and the keys under it (up to the next
+-- table header).
+withoutTable :: Text -> [Text] -> [Text]
+withoutTable header ls = before <> dropWhile (not . isHeader) (drop 1 rest)
+  where
+    (before, rest) = break (== header) ls
+    isHeader l = "[" `T.isPrefixOf` l
 
 failsMentioning :: String -> Either String Puzzle -> Assertion
 failsMentioning want = \case
@@ -615,7 +630,8 @@ suite = TestList
       assertBool "a gap too few" (isLeft (eitherDecode bad2 :: Either String RunRecord))
 
   , "the bank's fizzBuzz is the fizzBuzz Puzzle the game has always played" ~: do
-      lookupPuzzle "fizzBuzz" @?= Just fizzBuzz
+      -- Except the PureScript table, a placeholder until ticket 24.
+      fmap (\p -> p { purescript = fizzBuzz.purescript }) (lookupPuzzle "fizzBuzz") @?= Just fizzBuzz
 
   , "a random number picks any Puzzle in the bank, each equally likely" ~: do
       let n = length bank
@@ -647,11 +663,36 @@ suite = TestList
             { args = [Array [Number 1, Number 2.5], Object (KeyMap.fromList [("a", String "b")]), Bool True]
             , expected = String "x" }
         ]
-      fmap (\p -> (p.identity, p.function, p.signature, p.prompt, p.reference)) (parsesTo sampleFile)
-        @?= Right ("double", "double", "double(x)", "Return x times two.", "function double(x) { return x * 2; }")
+      fmap (\p -> (p.identity, p.function, p.prompt, p.javascript.signature, p.javascript.reference)) (parsesTo sampleFile)
+        @?= Right ("double", "double", "Return x times two.", "double(x)", "function double(x) { return x * 2; }")
+
+  , "a Puzzle file holds a table for each Language: JavaScript and PureScript both parse" ~: do
+      fmap (\p -> (p.purescript.signature, p.purescript.reference)) (parsesTo sampleFile)
+        @?= Right ("double :: Int -> Int", "double x = x * 2")
 
   , "a Puzzle file missing a key fails, naming it" ~: do
-      failsMentioning "reference" (parsesTo (filter (not . T.isPrefixOf "reference") sampleFile))
+      failsMentioning "prompt" (parsesTo (filter (not . T.isPrefixOf "prompt") sampleFile))
+
+  , "a Puzzle file missing the [javascript] table fails, naming it" ~: do
+      failsMentioning "javascript" (parsesTo (withoutTable "[javascript]" sampleFile))
+
+  , "a Puzzle file missing the [purescript] table fails, naming it" ~: do
+      failsMentioning "purescript" (parsesTo (withoutTable "[purescript]" sampleFile))
+
+  , "a Puzzle file with a Language table the format doesn't know fails, naming it" ~: do
+      failsMentioning "ruby" (parsesTo (sampleFile <> ["[ruby]", "signature = \"double(x)\"", "reference = \"def double(x) = x * 2\""]))
+
+  , "a top-level key the format doesn't know fails, naming it" ~: do
+      failsMentioning "difficulty" (parsesTo (["difficulty = 3"] <> sampleFile))
+
+  , "a Language table missing its reference fails, naming it" ~: do
+      failsMentioning "reference" (parsesTo (filter (/= "reference = \"double x = x * 2\"") sampleFile))
+
+  , "a Language table with a key the format doesn't know fails, naming it" ~: do
+      failsMentioning "difficulty" (parsesTo (sampleFile <> ["difficulty = 3"]))
+
+  , "the old shape, signature and reference at the top level, fails" ~: do
+      failsMentioning "signature" (parsesTo (["signature = \"double(x)\""] <> sampleFile))
 
   , "a Puzzle file with a key the format doesn't know fails, naming it" ~: do
       failsMentioning "difficulty" (parsesTo (sampleFile <> ["difficulty = 3"]))

@@ -53,19 +53,19 @@ test("fewer than 100 characters fails", () => failsWith("too-few-chars", /has 46
 test("more than 350 characters fails", () => failsWith("too-many-chars", /has 366 characters .* it must have 100–350/));
 
 test("malformed TOML fails, naming the file", () => failsWith("malformed", /^Invalid TOML document: unfinished string/));
-test("a missing required field fails", () => failsWith("missing-field", /^missing key: signature in <top-level>$/));
+test("a missing required field fails", () => failsWith("missing-field", /^missing key: signature in \[javascript\]$/));
 test("an unknown key fails, as in the build", () => failsWith("unknown-key", /^unexpected key: difficulty in <top-level>$/));
 test("a date where a JSON value belongs fails, as in the build", () =>
   failsWith("date-value", /^tests\[0\]\.expected: dates and times aren't JSON values$/));
 test("an empty list of tests fails", () => failsWith("empty-tests", /^tests must not be empty$/));
 
 test("the build's other rules: types of the texts, args a list, tests' keys", () => {
-  const base = `function = "f"\nsignature = "f()"\nprompt = "p"\nreference = "r"\n`;
-  const ps = `\n[purescript]\nsignature = "f"\nreference = "r"\n`;
-  const problems = (text) => readPuzzle("f", text + ps).problems ?? [];
+  const base = `function = "f"\nprompt = "p"\n`;
+  const tables = `\n[javascript]\nsignature = "f()"\nreference = "r"\n\n[purescript]\nsignature = "f"\nreference = "r"\n`;
+  const problems = (text) => readPuzzle("f", text + tables).problems ?? [];
   assert.deepEqual(problems(base + `[[tests]]\nargs = []\nexpected = 1\n`), []);
-  assert.deepEqual(problems(base.replace('"f()"', "3") + `[[tests]]\nargs = []\nexpected = 1\n`), [
-    "signature must be a string",
+  assert.deepEqual(readPuzzle("f", base + `[[tests]]\nargs = []\nexpected = 1\n` + tables.replace('"f()"', "3")).problems, [
+    "javascript.signature must be a string",
   ]);
   assert.deepEqual(problems(base + `[[tests]]\nargs = 1\nexpected = 1\n`), ["tests[0].args must be a list"]);
   assert.deepEqual(problems(base + `[[tests]]\nargs = []\n`), ["missing key: expected in tests[0]"]);
@@ -147,10 +147,34 @@ test("the command passes on a sound folder and prints the symbol report", async 
   assert.match(stdout, /Target symbols over \d+ Reference Solution\(s\)/);
 });
 
-test("a Puzzle without a [purescript] table fails", async () => {
-  const text = readFileSync(join(fixture("passing"), "double.toml"), "utf8").split("\n[purescript]")[0];
-  assert.deepEqual(readPuzzle("double", text).problems, [
+test("a Puzzle without a Language table fails, naming it", async () => {
+  const text = readFileSync(join(fixture("passing"), "double.toml"), "utf8");
+  const [beforeJs, afterJs] = text.split("\n[javascript]");
+  const js = "\n[javascript]" + afterJs.split("\n[purescript]")[0];
+  const ps = "\n[purescript]" + afterJs.split("\n[purescript]")[1];
+  assert.deepEqual(readPuzzle("double", beforeJs + ps).problems, [
+    "missing table: [javascript] (every Puzzle needs a Solution in every Language)",
+  ]);
+  assert.deepEqual(readPuzzle("double", beforeJs + js).problems, [
     "missing table: [purescript] (every Puzzle needs a Solution in every Language)",
+  ]);
+});
+
+test("a Language table the build doesn't know fails, as in the build", () => {
+  const text = readFileSync(join(fixture("passing"), "double.toml"), "utf8");
+  assert.deepEqual(readPuzzle("double", text + '\n[ruby]\nsignature = "s"\nreference = "r"\n').problems, [
+    "unexpected key: ruby in <top-level>",
+  ]);
+  assert.deepEqual(readPuzzle("double", text + 'difficulty = 3\n').problems, [
+    "unexpected key: difficulty in [purescript]",
+  ]);
+});
+
+test("the old shape, signature and reference at the top level, fails", () => {
+  const text = readFileSync(join(fixture("passing"), "double.toml"), "utf8");
+  assert.deepEqual(readPuzzle("double", 'signature = "double(x)"\nreference = "r"\n' + text).problems, [
+    "unexpected key: signature in <top-level>",
+    "unexpected key: reference in <top-level>",
   ]);
 });
 

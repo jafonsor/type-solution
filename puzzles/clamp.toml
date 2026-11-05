@@ -1,16 +1,7 @@
 function = "clamp"
-signature = "clamp(value, min, max)"
 prompt = """
 Return the value if it lies between min and max, otherwise the nearer of \
 min or max. For example, clamp(15, 0, 10) → 10."""
-
-reference = '''
-function clamp(value, min, max) {
-  if (value < min) return min;
-  if (value > max) return max;
-  return value;
-}
-'''
 
 [[tests]]
 args = [15, 0, 10]
@@ -27,3 +18,17 @@ expected = 7
 [[tests]]
 args = [10, 0, 10]
 expected = 10
+
+[javascript]
+signature = "clamp(value, min, max)"
+reference = '''
+function clamp(value, min, max) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

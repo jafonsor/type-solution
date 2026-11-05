@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 # 22: The app reads per-Language tables in Puzzle files, and the files migrate
@@ -10,6 +10,10 @@ Blocked by: none
 
 ## Acceptance
 
-- The app builds with Puzzle files in the new shape; unknown Language tables and a missing table are build errors.
-- puzzle-check and the build parse the same files the same way; `npm test` and the Haskell tests cover both.
-- Until ticket 24 lands, PureScript tables in `puzzles/` may be placeholders that make the bank check fail; say so in the commit. Decide with the owner whether to land 22 and 23 to 24 together.
+- [x] The app builds with Puzzle files in the new shape; unknown Language tables and a missing table are build errors.
+- [x] puzzle-check and the build parse the same files the same way; `npm test` and the Haskell tests cover both.
+- [x] Until ticket 24 lands, PureScript tables in `puzzles/` may be placeholders that make the bank check fail; say so in the commit. Decide with the owner whether to land 22 and 23 to 24 together.
+
+## Resolution
+
+Landed alone, ahead of 23 and 24 (decided with the owner). The 50 `[purescript]` tables are placeholders (`-- placeholder until ticket 24`). The bank check still passes, because it judges only JavaScript Reference Solutions and the presence of the tables; `npm run solutions -- --lang=purescript` fails on every placeholder until ticket 24.

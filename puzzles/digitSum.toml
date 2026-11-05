@@ -1,19 +1,7 @@
 function = "digitSum"
-signature = "digitSum(n)"
 prompt = """
 Add up the digits of a whole number that is zero or more. For example, \
 digitSum(472) → 13, and digitSum(0) → 0."""
-
-reference = '''
-function digitSum(n) {
-  let total = 0;
-  while (n > 0) {
-    total += n % 10;
-    n = Math.floor(n / 10);
-  }
-  return total;
-}
-'''
 
 [[tests]]
 args = [472]
@@ -30,3 +18,20 @@ expected = 5
 [[tests]]
 args = [0]
 expected = 0
+
+[javascript]
+signature = "digitSum(n)"
+reference = '''
+function digitSum(n) {
+  let total = 0;
+  while (n > 0) {
+    total += n % 10;
+    n = Math.floor(n / 10);
+  }
+  return total;
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

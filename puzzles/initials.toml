@@ -1,18 +1,8 @@
 function = "initials"
-signature = "initials(name)"
 prompt = """
 Return the upper-case first letter of each word in a name, each followed \
 by a dot: initials("ada lovelace") → "A.L.". Words are separated by \
 single spaces."""
-
-reference = '''
-function initials(name) {
-  return name
-    .split(' ')
-    .map((word) => word[0].toUpperCase() + '.')
-    .join('');
-}
-'''
 
 [[tests]]
 args = ["ada lovelace"]
@@ -25,3 +15,18 @@ expected = "G.B.H."
 [[tests]]
 args = ["linus"]
 expected = "L."
+
+[javascript]
+signature = "initials(name)"
+reference = '''
+function initials(name) {
+  return name
+    .split(' ')
+    .map((word) => word[0].toUpperCase() + '.')
+    .join('');
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

@@ -1,17 +1,8 @@
 function = "triangleType"
-signature = "triangleType(a, b, c)"
 prompt = """
 Name a triangle by its side lengths: "equilateral" if all three are equal, \
 "isosceles" if exactly two are, otherwise "scalene". For example, \
 triangleType(3, 3, 5) → "isosceles"."""
-
-reference = '''
-function triangleType(a, b, c) {
-  if (a === b && b === c) return 'equilateral';
-  if (a === b || b === c || a === c) return 'isosceles';
-  return 'scalene';
-}
-'''
 
 [[tests]]
 args = [3, 3, 5]
@@ -32,3 +23,17 @@ expected = "isosceles"
 [[tests]]
 args = [6, 7, 7]
 expected = "isosceles"
+
+[javascript]
+signature = "triangleType(a, b, c)"
+reference = '''
+function triangleType(a, b, c) {
+  if (a === b && b === c) return 'equilateral';
+  if (a === b || b === c || a === c) return 'isosceles';
+  return 'scalene';
+}
+'''
+
+[purescript]
+signature = "-- placeholder until ticket 24"
+reference = "-- placeholder until ticket 24"

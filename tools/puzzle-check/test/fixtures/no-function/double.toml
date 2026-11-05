@@ -1,6 +1,12 @@
 function = "double"
-signature = "double(x)"
 prompt = "Return x times two."
+
+[[tests]]
+args = [2]
+expected = 4
+
+[javascript]
+signature = "double(x)"
 reference = '''
 function triple(x) {
   const thrice = x * 3;
@@ -8,10 +14,6 @@ function triple(x) {
   return thrice;
 }
 '''
-
-[[tests]]
-args = [2]
-expected = 4
 
 [purescript]
 signature = "double :: Int -> Int"
