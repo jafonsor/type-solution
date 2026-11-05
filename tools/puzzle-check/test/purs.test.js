@@ -62,3 +62,30 @@ compiled("a wrapped import fails", async () => {
   assert.equal(problems.length, 1);
   assert.match(problems[0], /^line 2: only one-line imports are allowed/);
 });
+
+test("a Puzzle file's [purescript] table is read, and run-solutions runs it", async () => {
+  const { runSolutions, solutionsOf } = await import("../run-solutions.js");
+  const dir = join(here, "fixtures", "purescript-table");
+  const { readPuzzle } = await import("../puzzle-check.js");
+  const { puzzle, problems } = readPuzzle("double", readFileSync(join(dir, "double.toml"), "utf8"));
+  assert.equal(problems, undefined);
+  assert.deepEqual(solutionsOf(puzzle).map((s) => s.language), ["javascript", "purescript"]);
+  const rows = await runSolutions(dir, {
+    languages: ["purescript"],
+    options: { wasm: process.env.PURS_WASM ?? "", libs: process.env.PURS_LIBS },
+  });
+  assert.equal(rows.length, 1);
+  if (haveCompiler) assert.deepEqual(rows[0].problems, []);
+  else assert.match(rows[0].problems[0], /^no compiler configured for purescript/);
+});
+
+test("a malformed [purescript] table is a Puzzle file problem", async () => {
+  const { readPuzzle } = await import("../puzzle-check.js");
+  const base = `function = "f"\nsignature = "f()"\nprompt = "p"\nreference = "r"\n[[tests]]\nargs = []\nexpected = 1\n`;
+  assert.deepEqual(readPuzzle("f", base + `[purescript]\nsignature = "f"\n`).problems, [
+    "missing key: reference in [purescript]",
+  ]);
+  assert.deepEqual(readPuzzle("f", base + `[purescript]\nsignature = "f"\nreference = 3\n`).problems, [
+    "purescript.reference must be a string",
+  ]);
+});

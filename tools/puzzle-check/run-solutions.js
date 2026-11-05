@@ -21,11 +21,13 @@ export const runners = {
   purescript: purescriptProblems,
 };
 
-// Every Solution a Puzzle holds: [{language, code}]. Today a Puzzle file has
-// one Reference Solution, in JavaScript. When Puzzle files grow per-Language
-// tables (.scratch/other-languages/spec.md), read them here.
+// Every Solution a Puzzle holds: [{language, code}]. The JavaScript one is
+// still top-level; other Languages have a table (see readPuzzle).
 export function solutionsOf(puzzle) {
-  return [{ language: "javascript", code: puzzle.reference }];
+  return [
+    { language: "javascript", code: puzzle.reference },
+    ...(puzzle.purescript ? [{ language: "purescript", code: puzzle.purescript.reference }] : []),
+  ];
 }
 
 // Resolves to rows [{identity, language, problems}] (problems empty = pass).

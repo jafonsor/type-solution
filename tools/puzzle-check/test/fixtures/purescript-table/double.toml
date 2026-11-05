@@ -1,0 +1,27 @@
+function = "double"
+signature = "double(x)"
+prompt = "Return x times two."
+reference = '''
+function double(x) {
+  const twice = x * 2;
+  // Doubles its argument, then returns it to the caller.
+  return twice;
+}
+'''
+
+[[tests]]
+args = [2]
+expected = 4
+
+[[tests]]
+args = [-3]
+expected = -6
+
+[purescript]
+signature = "double :: Int -> Int"
+reference = '''
+import Prelude
+
+double :: Int -> Int
+double x = x * 2
+'''
