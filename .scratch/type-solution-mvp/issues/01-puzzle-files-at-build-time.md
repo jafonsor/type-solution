@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 01: Puzzles come from TOML files at build time
 

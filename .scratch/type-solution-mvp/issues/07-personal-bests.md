@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 07: Personal bests on the status line
 

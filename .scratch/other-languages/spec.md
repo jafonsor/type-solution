@@ -61,7 +61,7 @@ What a Language must supply ([ticket 19](issues/19-grilling-keeping-the-second-l
 
 ([ticket 04](issues/04-grilling-puzzle-file-per-language.md))
 
-- `function`, `prompt` and `[[tests]]` stay at the top level, shared. Each Language has a table, `[javascript]`, `[purescript]`, holding `signature` and `reference`. A missing table means the Puzzle is not in that Language yet (and that Language cannot ship, L4). Existing files migrate by wrapping `signature` and `reference` in `[javascript]`.
+- `function`, `prompt` and `[[tests]]` stay at the top level, shared. Each Language has a table, `[javascript]`, `[purescript]`, holding `signature` and `reference`. A missing table is an error: every Puzzle has a Solution in every Language (L4), and puzzle-check fails a file without one. Existing files migrate by wrapping `signature` and `reference` in `[javascript]`.
 - `Puzzle.hs` accepts the known Language tables and rejects unknown names.
 - **Prompt:** one, Language-neutral. Examples are plain input → output pairs (`"internationalization" → "i18n"`); puzzle-check lints out Language-specific call syntax.
 - **Limits, all Languages:** Reference Solution 4 to 30 non-blank lines and 100 to 900 characters, imports excluded. Existing JavaScript Puzzles need no change. (Per-Language limits are allowed in each Language's config; these are the defaults.)
@@ -90,7 +90,7 @@ No maintained browser build of the PureScript compiler exists; the plan of recor
 - **Libraries:** a committed list in `languages/purescript/` is the source of truth, naming one pinned package-set release. The Nix package builds externs and compiled library JavaScript for exactly that list. puzzle-check fails if a Reference Solution imports a library not on the list.
 - **Serving:** the bundle is separate from the main one, with a content hash in every file name (GitHub Pages sets no cache headers), kept in Cache Storage; old versions deleted when a new one is stored. A hashed manifest maps each library to its externs; a library's externs are fetched only when a Solution imports it. No CSP change (the page has none).
 - **Download timing:** on the first PureScript pick, or at page load if PureScript is the remembered Language. JavaScript-only players pay nothing.
-- **Reference Solution check:** puzzle-check compiles every PureScript Reference Solution with this compiler and fails on any error. This also guards against the 9.14 version drift.
+- **Reference Solution check:** puzzle-check compiles every PureScript Reference Solution with this compiler and fails on any error. This also guards against the 9.14 version drift. The check runs the same `purs-core.wasm` the browser downloads, in Node through WASI, as a runner behind `npm run solutions` ([ticket 21](issues/21-task-puzzle-check-runs-purs-wasm-in-node.md)); not a native `purs`, and not a browser.
 
 **Check behaviour**
 - One long-lived compiler worker, kept between checks; each check gets a fresh compiler instance in it with a persistent in-memory file tree. Compile timeout about 5 s (a safety net); only on timeout is the worker killed, and the new one rebuilds its tree from the saved downloads. The ~1 s timeout applies only to running the generated JavaScript against the tests, in a fresh sandbox as today. No spare worker.

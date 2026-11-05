@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 03: Puzzle authoring skill and the first batch
 

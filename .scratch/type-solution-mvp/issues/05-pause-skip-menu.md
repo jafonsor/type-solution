@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 05: Pause, skip and the menu
 
