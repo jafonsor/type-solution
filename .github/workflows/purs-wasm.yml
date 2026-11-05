@@ -1,0 +1,75 @@
+# Builds the PureScript compiler bundle's inputs (ticket 27): the gmp-free
+# wasm GHC and purs-core.wasm. Manual only (workflow_dispatch), so it can
+# never deploy Pages; deploy.yml stays the only pipeline that publishes.
+#
+# Run it twice. The summary of each run says whether the GHC derivation was
+# built (cold, well over 34 min) or fetched from the Nix cache (second run,
+# minutes). A change to an unrelated file (a Puzzle) between the runs must not
+# change the "GHC derivation" line.
+name: PureScript wasm
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: purs-wasm
+  cancel-in-progress: false
+
+jobs:
+  purs-wasm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      # The runner starts with ~14 GB free; the GHC build needs more.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+            fallback = true
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      - name: GHC derivation (built or fetched?)
+        id: plan
+        run: |
+          drv=$(nix path-info --derivation .#ghc-wasm-native)
+          echo "GHC derivation: $drv"
+          nix build --dry-run .#ghc-wasm-native 2>&1 | tee plan.txt
+          if grep -q "will be built" plan.txt && grep -q "ghc-wasm-native-[0-9.]*\.drv" plan.txt; then
+            state="BUILT (not in the cache)"
+          else
+            state="FETCHED from the cache (not built)"
+          fi
+          {
+            echo "### GHC derivation"
+            echo "- derivation: \`$drv\`"
+            echo "- this run: **$state**"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Build the gmp-free wasm GHC
+        run: |
+          start=$(date +%s)
+          nix build -L .#ghc-wasm-native --out-link ghc-wasm-native
+          echo "- GHC step took $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
+          df -h /
+
+      - name: Build purs-core.wasm
+        run: |
+          start=$(date +%s)
+          nix build -L .#purs-core-wasm --out-link purs-core-wasm
+          echo "- purs-core.wasm step took $(( $(date +%s) - start )) s" | tee -a "$GITHUB_STEP_SUMMARY"
+          ls -l purs-core-wasm/purs-core.wasm | tee -a "$GITHUB_STEP_SUMMARY"
+          sha256sum purs-core-wasm/purs-core.wasm | tee -a "$GITHUB_STEP_SUMMARY"

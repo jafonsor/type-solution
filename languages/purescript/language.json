@@ -8,5 +8,5 @@
   "callingConvention": "calling-convention.md",
   "authoring": "authoring.md",
   "nameClashes": "name-clashes.json",
-  "compilerPatch": ".scratch/other-languages/research/10-purs-wasm/purescript.patch"
+  "compilerPatch": "nix/purescript/purescript.patch"
 }
