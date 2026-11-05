@@ -1,6 +1,6 @@
 Type: task
 Status: ready-for-agent
-Blocked by: 26, 28
+Blocked by: 26, 28, 35 (its calling-convention rule must be mirrored)
 
 # 31: PureScript Checker worker, errors and loading line
 

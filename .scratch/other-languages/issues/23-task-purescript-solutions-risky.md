@@ -69,3 +69,5 @@ All 12 Puzzles pass: chunk, everyOther, positions, rotate, unique, grid, flatten
 | unsafe-coerce | v6.0.1 | 8888c0d9b55972c3ce61147be7345492ddd7fb00 |
 
 Note for ticket 25: the Reference Solutions import `Data.Array`, `Data.Maybe`, `Data.Tuple`, `Data.String`, `Data.Argonaut.Core`, `Foreign.Object`, `Record`, and `Prim.Row` (built in). `import Prelude` is explicit in every Solution except `withDefaults` (unused there).
+
+Decision (owner, 2026-11-05): keep `queryString` as the advanced type (`RowToList` plus a user class). The harness must build the dictionaries; that is ticket 35. Until 35 lands, the committed `Object Json -> String` is an interim Solution.
