@@ -14,7 +14,7 @@ Rules every spec and build decision must keep. Breaking one means stopping to as
 - **I4 — No server.** The app is static files only; there is no server-side game logic, no accounts and no global leaderboards. Player code runs only in the player's browser, in a Web Worker that is stopped on a ~1 s timeout.
 - **I5 — Results stay in this browser.** Runs, their key presses, Personal bests and weak-key stats are kept in the player's own browser storage and never leave it.
 - **I6 — Puzzles are hand-made files.** Each Puzzle is a TOML file in the repo, read in when the app is built, with a Reference Solution that passes its tests. The app never calls an LLM and players can't author Puzzles.
-- **I7 — JavaScript only.** Solutions are JavaScript; no other language is offered.
+- **I7 — JavaScript only.** Superseded by the [other-languages spec](../other-languages/spec.md) and [ADR 0002](../../docs/adr/0002-solutions-can-be-typed-in-more-than-one-language.md): Solutions can be typed in more than one Language.
 - **I8 — The chosen stack.** reflex-dom on Obelisk v2, compiled to WebAssembly, with CodeMirror 6 behind a thin JS shim and a plain-JS test-runner worker; built by GitHub Actions and served by GitHub Pages.
 
 ## Problem Statement
@@ -198,7 +198,7 @@ Today one Puzzle (fizzBuzz) already plays end to end: editor, live checks, timer
 ## Out of Scope
 
 - Accounts, global leaderboards and any server-side logic.
-- Languages other than JavaScript.
+- Languages other than JavaScript (superseded: see I7).
 - Runtime LLM generation of Puzzles; Puzzles written by players.
 - Runs of several Puzzles; daily seeded sets.
 - Share-as-text of a result.
