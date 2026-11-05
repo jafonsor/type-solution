@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 23
 
 # 35: The PureScript harness calls functions that need a user-written class dictionary (`queryString`)
@@ -12,7 +12,7 @@ Make the harness able to call it. Suggested approach, to be confirmed by measure
 
 ## Acceptance
 
-- `queryString` has a `[purescript]` table with the advanced type that passes `npm run solutions -- --lang=purescript --puzzle=queryString` with the tests unchanged; the interim `Object Json` Solution is gone.
-- The rule is documented in the spec's "Calling convention" (what the harness builds, what it still cannot: `Ord`, `Show` and so on if still true) and tested in `tools/puzzle-check/test/` (a passing and a failing case).
-- The cost per check is measured and recorded; the browser worker (ticket 31) must do the same, noted in 31.
-- `npm run check` and `npm test` keep passing.
+- [x] `queryString` has a `[purescript]` table with the advanced type that passes `npm run solutions -- --lang=purescript --puzzle=queryString` with the tests unchanged; the interim `Object Json` Solution is gone.
+- [x] The rule is documented in the spec's "Calling convention" (what the harness builds, what it still cannot: `Ord`, `Show` and so on if still true) and tested in `tools/puzzle-check/test/` (a passing and a failing case).
+- [x] The cost per check is measured and recorded; the browser worker (ticket 31) must do the same, noted in 31.
+- [x] `npm run check` and `npm test` keep passing.

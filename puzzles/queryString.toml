@@ -33,19 +33,32 @@ function queryString(params) {
 
 [purescript]
 signature = '''
-queryString :: Object Json -> String
-queryString params = ...'''
+queryString :: forall r rl. RowToList r rl => Keys rl => Record r -> String
+queryString record = ...'''
 reference = '''
 import Prelude
-import Data.Argonaut.Core (Json, stringify, toString)
-import Data.Maybe (fromMaybe)
 import Data.String (joinWith)
-import Data.Tuple (Tuple(..))
-import Foreign.Object (Object, toAscUnfoldable)
+import Data.Symbol (class IsSymbol, reflectSymbol)
+import Prim.RowList (class RowToList, Cons, Nil, RowList)
+import Record.Unsafe (unsafeGet)
+import Type.Proxy (Proxy(..))
 
-queryString :: Object Json -> String
-queryString params = joinWith "&" (map pair pairs)
-  where
-    pairs = toAscUnfoldable params :: Array (Tuple String Json)
-    pair (Tuple key value) = key <> "=" <> fromMaybe (stringify value) (toString value)
+class Field a where
+  field :: a -> String
+
+instance Field String where field = identity
+instance Field Int where field = show
+
+class Keys (rl :: RowList Type) where
+  pairs :: forall r. Proxy rl -> Record r -> Array String
+
+instance Keys Nil where
+  pairs _ _ = []
+
+instance (IsSymbol k, Field v, Keys rest) => Keys (Cons k v rest) where
+  pairs _ record = [key <> "=" <> field (unsafeGet key record :: v)] <> pairs (Proxy :: Proxy rest) record
+    where key = reflectSymbol (Proxy :: Proxy k)
+
+queryString :: forall r rl. RowToList r rl => Keys rl => Record r -> String
+queryString record = joinWith "&" (pairs (Proxy :: Proxy rl) record)
 '''

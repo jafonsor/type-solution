@@ -7,7 +7,7 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { dictionaryKinds, purescriptProblems } from "../purs-runner.js";
+import { dictionaryKinds, harnessSource, purescriptProblems } from "../purs-runner.js";
 import { runners } from "../run-solutions.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -68,7 +68,9 @@ test("constraints in a signature become dictionary arguments", () => {
   assert.deepEqual(kinds("f :: Int -> Int"), []);
   assert.deepEqual(kinds("f :: forall a. Eq a => Array a -> Array a"), ["eq"]);
   assert.deepEqual(kinds("f :: forall a b. Union a b c => Nub c d => Record a -> Record d"), ["other", "other"]);
-  assert.deepEqual(kinds("f :: forall a. (Eq a, Show a) => a -> String"), ["eq", "other"]);
+  assert.deepEqual(kinds("f :: forall a. (Eq a, Show a) => a -> String"), ["eq", "typed"]);
+  assert.deepEqual(kinds("f :: forall r rl. RowToList r rl => Keys rl => Record r -> String"), ["typed", "typed"]);
+  assert.deepEqual(kinds("f :: forall a. Ord a => Array a -> Array a"), ["typed"]);
   assert.deepEqual(kinds("f\n  :: forall a\n   . Eq a\n  => a\n  -> a"), ["eq"]);
   assert.deepEqual(dictionaryKinds("g :: Eq a => a -> a\nf :: Int -> Int\n", "f"), []);
 });
@@ -109,5 +111,53 @@ test("a malformed [purescript] table is a Puzzle file problem", async () => {
   ]);
   assert.deepEqual(readPuzzle("f", base + `[purescript]\nsignature = "f"\nreference = 3\n`).problems, [
     "purescript.reference must be a string",
+  ]);
+});
+
+test("the typed path writes a literal per JSON value, typed from it", () => {
+  const source = harnessSource({
+    function: "f",
+    tests: [{ args: [{ q: "cats", n: -3, big: 3000000000, x: 1.5, ok: true, l: [[1], [2, 3]], o: {} }, "s"] }],
+  });
+  assert.match(source, /^t0 _ = f \{ "q": "cats", "n": \(-3\), "big": 3000000000\.0, "x": 1\.5, "ok": true, "l": \[\[1\], \[2, 3\]\], "o": \{\} \} "s"$/m);
+});
+
+test("the typed path names the test and place of a JSON value it cannot type", () => {
+  const bad = (args) => () => harnessSource({ function: "f", tests: [{ args: [1] }, { args }] });
+  assert.throws(bad([{ a: [null] }]), /test 2 args\[0\]\.a\[0\]: null has no PureScript type/);
+  assert.throws(bad([[1, "a"]]), /test 2 args\[0\]: an array of mixed types \(Int, String\)/);
+  assert.throws(bad([{ list: [] }]), /test 2 args\[0\]\.list: an empty array has no element type/);
+  assert.throws(bad(["caf\u00e9"]), /test 2 args\[0\]: a string with a character outside printable ASCII/);
+});
+
+compiled("a user-written class is resolved by the compiler at each test's types", async () => {
+  const label = {
+    function: "label",
+    tests: [
+      { args: ["a"], expected: "text a" },
+      { args: [7], expected: "number 7" },
+    ],
+  };
+  assert.deepEqual(await purescriptProblems(label, solution("typed-class")), []);
+});
+
+compiled("a failing test through the typed path is named", async () => {
+  const label = { function: "label", tests: [{ args: [7], expected: "number 8" }] };
+  assert.deepEqual(await purescriptProblems(label, solution("typed-class")), [
+    'test 1 failed: label(7) expected "number 8", got "number 7"',
+  ]);
+});
+
+compiled("a test whose values have no instance is reported as the generated module's error", async () => {
+  const label = { function: "label", tests: [{ args: [true], expected: "x" }] };
+  const problems = await purescriptProblems(label, solution("typed-class"));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^the generated test module does not compile: \d+:\d+ No type class instance was found for .*Describe Boolean/);
+});
+
+compiled("a JSON shape that cannot be typed fails with a readable message", async () => {
+  const label = { function: "label", tests: [{ args: [null], expected: "x" }] };
+  assert.deepEqual(await purescriptProblems(label, solution("typed-class")), [
+    "cannot call label from the tests: test 1 args[0]: null has no PureScript type",
   ]);
 });

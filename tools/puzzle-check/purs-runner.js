@@ -120,13 +120,18 @@ export function firstError(text, lineOffset) {
 }
 
 // Runs the compiler once on the session's files plus Main.purs.
-function runCompiler(session, source) {
+function runCompiler(session, source, harness) {
   const main = join(session.dir, "src", "Main.purs");
   writeFileSync(main, source);
+  const files = ["/w/src/Main.purs"];
+  if (harness) {
+    writeFileSync(join(session.dir, "src", "Harness.purs"), harness);
+    files.push("/w/src/Harness.purs");
+  }
   // The compiler skips files whose modified time hasn't moved: make every
   // write later than the last.
   const when = new Date(Date.now() + 1000 * ++session.tick);
-  utimesSync(main, when, when);
+  for (const f of files) utimesSync(join(session.dir, f.slice(3)), when, when);
   const outPath = join(session.dir, "stdout.txt");
   const errPath = join(session.dir, "stderr.txt");
   const [outFd, errFd] = [openSync(outPath, "w"), openSync(errPath, "w")];
@@ -134,7 +139,7 @@ function runCompiler(session, source) {
   try {
     const wasi = new WASI({
       version: "preview1",
-      args: ["purs-core", "/w/out", ...session.srcFiles, "/w/src/Main.purs"],
+      args: ["purs-core", "/w/out", ...session.srcFiles, ...files],
       env: {},
       preopens: { "/w": session.dir },
       stdout: outFd,
@@ -154,12 +159,20 @@ function runCompiler(session, source) {
 
 // A function with constraints in its type takes one argument per constraint
 // before its own: `unique :: forall a. Eq a => Array a -> Array a` compiles to
-// `unique(dictEq)(items)`. Row constraints (Union, Nub, RowToList, ...) take an
-// argument too, and ignore it. The tests only know JSON values, so the runner
-// reads the constraints off the function's signature in the code and the test
-// worker supplies the arguments: "eq" is an Eq dictionary for JSON values,
-// "other" any value. A user-written class can't be supplied: its dictionary
-// holds the class's methods.
+// `unique(dictEq)(items)`. The tests only know JSON values, so the runner
+// reads the constraints off the function's signature in the code and decides
+// how to call it:
+//   "eq"     the test worker supplies an Eq dictionary for JSON values;
+//   "other"  a row-solved constraint (Union, Nub, ...): the argument is ignored,
+//            the worker supplies any value;
+//   "typed"  anything else (RowToList, Ord, Show, a class the Solution
+//            defines): the dictionary holds real methods that depend on the
+//            types of the test's values, so the runner has the compiler build
+//            it (see harnessSource). Any one "typed" constraint sends the
+//            function down the typed path, and then the compiler resolves
+//            every constraint, Eq included.
+const cheapClasses = { Eq: "eq", Union: "other", Nub: "other", Lacks: "other", Cons: "other", Append: "other" };
+
 export function dictionaryKinds(code, fn) {
   const at = new RegExp(`^${fn}\\s*::((?:.*)(?:\\r?\\n[ \\t]+.*)*)`, "m").exec(code);
   if (!at) return [];
@@ -170,19 +183,72 @@ export function dictionaryKinds(code, fn) {
       const t = part.trim();
       return t.startsWith("(") && t.endsWith(")") ? t.slice(1, -1).split(",") : [t];
     })
-    .map((c) => (/^Eq\b/.test(c.trim()) ? "eq" : "other"));
+    .map((c) => cheapClasses[/^[A-Z]\w*/.exec(c.trim())?.[0]] ?? "typed");
+}
+
+// The typed path. For a function the harness cannot give dictionaries to, it
+// writes a module Harness with one function per test, `t0 _ = f <args>`, where
+// the arguments are PureScript literals typed from the test's JSON:
+//   string -> String       integer within 32 bits -> Int     other number -> Number
+//   boolean -> Boolean     object -> record, every key a quoted label
+//   array -> Array of one element type (every element must give the same type)
+// The compiler then picks the instances for those types. A JSON value it
+// cannot type (null, an array of mixed types, an empty array whose element type
+// nothing fixes, a string with a character outside printable ASCII, a number
+// beyond what is written plainly) throws a message naming the test and the
+// value's place.
+const int32 = (n) => Number.isInteger(n) && n >= -2147483648 && n <= 2147483647;
+
+// Returns {code, type}: PureScript source for the value and a string naming
+// its type shape, so array elements can be checked against each other.
+function literal(value, where) {
+  if (typeof value === "string") {
+    if (!/^[\x20-\x7e]*$/.test(value)) throw new Error(`${where}: a string with a character outside printable ASCII cannot be written as a literal`);
+    return { code: JSON.stringify(value), type: "String" };
+  }
+  if (typeof value === "boolean") return { code: String(value), type: "Boolean" };
+  if (typeof value === "number") {
+    const text = String(value);
+    if (/e/i.test(text)) throw new Error(`${where}: the number ${text} cannot be written plainly`);
+    if (int32(value)) return { code: value < 0 ? `(${text})` : text, type: "Int" };
+    const num = Number.isInteger(value) ? `${text}.0` : text;
+    return { code: value < 0 ? `(${num})` : num, type: "Number" };
+  }
+  if (Array.isArray(value)) {
+    const items = value.map((v, i) => literal(v, `${where}[${i}]`));
+    if (items.length === 0) throw new Error(`${where}: an empty array has no element type to give the compiler`);
+    const types = new Set(items.map((i) => i.type));
+    if (types.size > 1) throw new Error(`${where}: an array of mixed types (${[...types].join(", ")}) has no PureScript type`);
+    return { code: `[${items.map((i) => i.code).join(", ")}]`, type: `Array ${[...types][0]}` };
+  }
+  if (value !== null && typeof value === "object") {
+    const fields = Object.entries(value).map(([k, v]) => [k, literal(v, `${where}.${k}`)]);
+    return {
+      code: `{ ${fields.map(([k, v]) => `${JSON.stringify(k)}: ${v.code}`).join(", ")} }`.replace("{  }", "{}"),
+      type: `{${fields.map(([k, v]) => `${k}:${v.type}`).join(",")}}`,
+    };
+  }
+  throw new Error(`${where}: ${value === null ? "null" : typeof value} has no PureScript type`);
+}
+
+export function harnessSource(puzzle) {
+  const lines = puzzle.tests.map((t, i) => {
+    const args = t.args.map((a, j) => literal(a, `test ${i + 1} args[${j}]`).code);
+    return `t${i} _ = ${puzzle.function} ${args.join(" ")}`;
+  });
+  return `module Harness where\n\nimport Prelude\nimport Main (${puzzle.function})\n\n${lines.join("\n")}\n`;
 }
 
 // * Running
 
 // Runs the compiled Main against the tests in a worker, with the timeout.
-function runTests(session, puzzle, dicts, options) {
+function runTests(session, puzzle, dicts, options, typed) {
   const timeout = options?.timeout ?? timeoutMs;
   // A new query each time, so the import isn't served from the module cache.
   const mainUrl = pathToFileURL(join(session.dir, "out", "Main", "index.js")).href + `?v=${session.tick}`;
   return new Promise((done) => {
     const worker = new Worker(join(here, "purs-test-worker.js"), {
-      workerData: { mainUrl, fn: puzzle.function, dicts, tests: puzzle.tests },
+      workerData: { mainUrl: typed ? mainUrl.replace("/Main/", "/Harness/") : mainUrl, fn: puzzle.function, dicts, tests: puzzle.tests, typed },
     });
     const timer = setTimeout(() => finish({ kind: "timeout" }), timeout);
     const finish = (r) => {
@@ -219,10 +285,26 @@ export async function purescriptProblems(puzzle, code, options = {}) {
 
   const hasHeader = /^\s*module\s/.test(code);
   const source = hasHeader ? code : header + code;
-  const { exit, text } = runCompiler(session, source);
-  if (exit !== 0) return [`compile error at ${firstError(text, hasHeader ? 0 : 1)}`];
+  const kinds = dictionaryKinds(code, puzzle.function);
+  const typed = kinds.includes("typed");
+  let harness;
+  if (typed) {
+    try {
+      harness = harnessSource(puzzle);
+    } catch (err) {
+      return [`cannot call ${puzzle.function} from the tests: ${err.message}`];
+    }
+  }
+  const { exit, text } = runCompiler(session, source, harness);
+  if (exit !== 0) {
+    // An error in the generated module is not in the player's code.
+    if (typed && /Harness\.purs/.test(stripAnsi(text))) {
+      return [`the generated test module does not compile: ${firstError(text, 0)}`];
+    }
+    return [`compile error at ${firstError(text, hasHeader ? 0 : 1)}`];
+  }
 
-  const reply = await runTests(session, puzzle, dictionaryKinds(code, puzzle.function), options);
+  const reply = await runTests(session, puzzle, kinds, options, typed);
   if (reply.kind === "timeout") return [`Reference Solution timed out (over ${options.timeout ?? timeoutMs} ms)`];
   if (reply.kind === "error") return [`Reference Solution crashed: ${reply.message}`];
   return puzzle.tests.flatMap((t, i) =>

@@ -27,17 +27,21 @@ const toJson = (v) =>
 const dictionary = { eq: { eq: (a) => (b) => a === b }, other: {} };
 const call = (f, dicts, args) => [...dicts.map((k) => dictionary[k]), ...args].reduce((g, a) => g(a), f);
 
-const { mainUrl, fn, dicts, tests } = workerData;
+// With `typed`, mainUrl is the generated Harness module (see harnessSource in
+// purs-runner.js): its function t<i> takes a unit and makes test i's call, the
+// compiler having built the dictionaries.
+const { mainUrl, fn, dicts, tests, typed } = workerData;
 try {
-  const f = (await import(mainUrl))[fn];
-  if (typeof f !== "function") {
+  const mod = await import(mainUrl);
+  const f = mod[fn];
+  if (!typed && typeof f !== "function") {
     throw new Error(`${fn} is not exported as a function`);
   }
   parentPort.postMessage({
     kind: "results",
-    results: tests.map(({ args, expected }) => {
+    results: tests.map(({ args, expected }, i) => {
       try {
-        const got = toJson(call(f, dicts, structuredClone(args)));
+        const got = toJson(typed ? mod["t" + i]() : call(f, dicts, structuredClone(args)));
         return { pass: same(got, expected), got: show(got) };
       } catch (err) {
         return { pass: false, got: String(err) };

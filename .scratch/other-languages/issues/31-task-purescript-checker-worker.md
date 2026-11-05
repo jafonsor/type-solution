@@ -11,3 +11,7 @@ Build order step 5. One long-lived compiler worker with a fresh instance per che
 ## Acceptance
 
 - A type error and a syntax error show readable messages with underline; a passing Solution runs against the tests in a fresh sandbox with the ~1 s timeout.
+
+## Comments
+
+Ticket 35: the worker must mirror the typed path of `tools/puzzle-check/purs-runner.js` (spec, "Calling convention"). When the signature has a constraint other than `Eq` or a row-solved one (`Union`, `Nub`, `Lacks`, `Cons`, `Append`), generate a `Harness` module with one function per test, `t<i> _ = f <literals typed from the test's JSON>`, compile it with the Solution in the same compiler run, and call `t<i>()` instead of building dictionaries by hand. Same JSON-to-type mapping and same readable failures. Measure the added cost in the browser (in Node it was not measurable).
