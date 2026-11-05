@@ -33,5 +33,17 @@ function digitSum(n) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+digitSum :: Int -> Int
+digitSum n = ...'''
+reference = '''
+import Prelude
+import Data.Enum (fromEnum)
+import Data.Foldable (sum)
+import Data.String.CodeUnits (toCharArray)
+
+digitSum :: Int -> Int
+digitSum n = sum $ map digit $ toCharArray $ show n
+  where
+    digit c = fromEnum c - fromEnum '0'
+'''

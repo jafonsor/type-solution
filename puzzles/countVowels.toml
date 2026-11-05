@@ -32,5 +32,17 @@ function countVowels(text) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+countVowels :: String -> Int
+countVowels text = ...'''
+reference = '''
+import Prelude
+import Data.Array (elem, filter, length)
+import Data.String (toLower)
+import Data.String.CodeUnits (toCharArray)
+
+countVowels :: String -> Int
+countVowels text = text # toLower # toCharArray # filter isVowel # length
+  where
+    isVowel c = elem c ['a', 'e', 'i', 'o', 'u']
+'''

@@ -38,5 +38,21 @@ function rockPaperScissors(a, b) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+rockPaperScissors :: String -> String -> String
+rockPaperScissors a b = ...'''
+reference = '''
+import Prelude
+
+rockPaperScissors :: String -> String -> String
+rockPaperScissors a b
+  | a == b = "draw"
+  | beats a b = "win"
+  | otherwise = "lose"
+
+beats :: String -> String -> Boolean
+beats "rock" "scissors" = true
+beats "scissors" "paper" = true
+beats "paper" "rock" = true
+beats _ _ = false
+'''

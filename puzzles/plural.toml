@@ -30,5 +30,14 @@ function plural(count, word) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+plural :: Int -> String -> String
+plural count word = ...'''
+reference = '''
+import Prelude
+
+plural :: Int -> String -> String
+plural count word = show count <> " " <> word <> suffix
+  where
+    suffix = if count == 1 then "" else "s"
+'''

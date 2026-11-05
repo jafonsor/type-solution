@@ -28,5 +28,15 @@ function invert(obj) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+invert :: Object String -> Object String
+invert obj = ...'''
+reference = '''
+import Prelude
+import Foreign.Object (Object, empty, fold, insert)
+
+invert :: Object String -> Object String
+invert obj = fold flipIn empty obj
+  where
+    flipIn result key value = insert value key result
+'''

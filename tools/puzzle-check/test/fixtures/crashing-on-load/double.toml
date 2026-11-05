@@ -15,10 +15,15 @@ throw new Error("this Reference Solution crashes before any test runs");
 '''
 
 [purescript]
-signature = "double :: Int -> Int"
-reference = """
+signature = '''
+double :: Int -> Int
+double x = ...'''
+reference = '''
 import Prelude
 
 double :: Int -> Int
-double x = x * 2
-"""
+double x = twice
+  where
+    -- Doubles its argument, then returns it to the caller.
+    twice = x * 2
+'''

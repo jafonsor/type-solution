@@ -1,6 +1,6 @@
 // The Puzzle bank check's command: `node check.js [folder]`, the folder being
 // the repo's puzzles/ by default. Prints each failing Puzzle file and why,
-// then the symbol report. Exits 1 if any Puzzle file fails, else 0.
+// then the symbol report (one table per Language). Exits 1 if any Puzzle file fails, else 0.
 import { checkBank, defaultPuzzlesDir } from "./puzzle-check.js";
 
 const dir = process.argv[2] ?? defaultPuzzlesDir;

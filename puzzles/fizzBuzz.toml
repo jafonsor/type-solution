@@ -31,5 +31,16 @@ function fizzBuzz(n) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+fizzBuzz :: Int -> String
+fizzBuzz n = ...'''
+reference = '''
+import Prelude
+
+fizzBuzz :: Int -> String
+fizzBuzz n
+  | n `mod` 15 == 0 = "FizzBuzz"
+  | n `mod` 3 == 0 = "Fizz"
+  | n `mod` 5 == 0 = "Buzz"
+  | otherwise = show n
+'''

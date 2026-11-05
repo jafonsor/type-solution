@@ -30,5 +30,15 @@ function clamp(value, min, max) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+clamp :: Int -> Int -> Int -> Int
+clamp value lo hi = ...'''
+reference = '''
+import Prelude
+
+clamp :: Int -> Int -> Int -> Int
+clamp value lo hi
+  | value < lo = lo
+  | value > hi = hi
+  | otherwise = value
+'''

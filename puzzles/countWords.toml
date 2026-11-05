@@ -29,5 +29,18 @@ function countWords(text) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+countWords :: String -> Object Int
+countWords text = ...'''
+reference = '''
+import Prelude
+import Data.Foldable (foldl)
+import Data.Maybe (Maybe(..), maybe)
+import Data.String (Pattern(..), split)
+import Foreign.Object (Object, alter, empty)
+
+countWords :: String -> Object Int
+countWords text = foldl bump empty $ split (Pattern " ") text
+  where
+    bump counts word = alter (Just <<< maybe 1 (_ + 1)) word counts
+'''

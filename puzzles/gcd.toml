@@ -32,5 +32,15 @@ function gcd(a, b) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+gcd :: Int -> Int -> Int
+gcd first second = ...'''
+reference = '''
+import Prelude
+
+gcd :: Int -> Int -> Int
+gcd first second = go (max first second) (min first second)
+  where
+    go x 0 = x
+    go x y = go y (x `mod` y)
+'''

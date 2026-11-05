@@ -26,5 +26,15 @@ function wrapTag(tag, text) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+wrapTag :: String -> String -> String
+wrapTag tag text = ...'''
+reference = '''
+import Prelude
+
+wrapTag :: String -> String -> String
+wrapTag tag text = open <> text <> close
+  where
+    open = "<" <> tag <> ">"
+    close = "</" <> tag <> ">"
+'''

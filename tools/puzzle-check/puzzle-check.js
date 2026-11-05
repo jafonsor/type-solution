@@ -4,7 +4,7 @@
 //     browser's own test-runner script (static/src/js/runner.js), unchanged,
 //   - checks the Reference Solution's length,
 // and reports how often each target symbol appears across all Reference
-// Solutions (a report only, never a failure).
+// Solutions, per Language (a report only, never a failure).
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,6 +26,11 @@ const puzzleKeys = ["function", "prompt", "tests"];
 const languages = ["javascript", "purescript"];
 const languageKeys = ["signature", "reference"];
 const testKeys = ["args", "expected"];
+
+// A Language table text that holds no code: empty, or only blank lines and
+// `--` / `//` comments (the PureScript placeholder, "-- placeholder until
+// ticket 24", is one).
+export const isPlaceholder = (text) => text.split(/\r?\n/).every((l) => /^\s*(--.*|\/\/.*)?$/.test(l));
 
 const isTable = (v) =>
   typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Date);
@@ -79,6 +84,9 @@ export function readPuzzle(identity, text) {
       problems.push(...keyProblems(table, languageKeys, `[${language}]`));
       for (const k of languageKeys) {
         if (k in table && typeof table[k] !== "string") problems.push(`${language}.${k} must be a string`);
+        else if (k in table && isPlaceholder(table[k])) {
+          problems.push(`${language}.${k} is a placeholder or empty (every Puzzle needs a real Solution in every Language)`);
+        }
       }
     }
   }
@@ -120,7 +128,24 @@ export function readPuzzle(identity, text) {
 
 // * Length
 
-export const lengthRule = { minLines: 4, maxLines: 12, minChars: 100, maxChars: 350 };
+// Per Language. The limits are the spec's defaults (.scratch/other-languages/spec.md,
+// "Puzzle file"): JavaScript keeps its original ones; PureScript gets the wider
+// ones, with import lines (inserted by the editor, not typed) left out.
+export const lengthRules = {
+  javascript: { minLines: 4, maxLines: 12, minChars: 100, maxChars: 350 },
+  purescript: { minLines: 4, maxLines: 30, minChars: 100, maxChars: 900 },
+};
+export const lengthRule = lengthRules.javascript;
+
+// The Languages whose Solutions have import lines, and the line that is one.
+const importLine = { purescript: /^\s*import\b/ };
+
+// The part of a Reference Solution the player types: all of it, but the
+// import lines for a Language that has them.
+export const typedCode = (reference, language = "javascript") =>
+  importLine[language]
+    ? reference.split(/\r?\n/).filter((l) => !importLine[language].test(l)).join("\n")
+    : reference;
 
 // How long a Reference Solution is, as the player types it. Each line has its
 // leading whitespace (spaces, tabs) removed, since the editor auto-indents;
@@ -128,25 +153,28 @@ export const lengthRule = { minLines: 4, maxLines: 12, minChars: 100, maxChars: 
 // `chars` is the number of characters (Unicode code points) on them. Line
 // breaks are not characters here: they are counted by `lines`. Trailing
 // whitespace on a line is counted, as the rule removes only leading
-// whitespace.
-export function referenceLength(reference) {
-  const kept = reference
+// whitespace. Imports are excluded for Languages that have them.
+export function referenceLength(reference, language = "javascript") {
+  const kept = typedCode(reference, language)
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s+/, ""))
     .filter((line) => line !== "");
   return { lines: kept.length, chars: kept.reduce((n, line) => n + [...line].length, 0) };
 }
 
-export function lengthProblems(reference) {
-  const { lines, chars } = referenceLength(reference);
-  const r = lengthRule;
+const languageName = { javascript: "", purescript: "PureScript " };
+
+export function lengthProblems(reference, language = "javascript") {
+  const { lines, chars } = referenceLength(reference, language);
+  const r = lengthRules[language];
+  const who = `${languageName[language]}Reference Solution`;
   const problems = [];
   if (lines < r.minLines || lines > r.maxLines) {
-    problems.push(`Reference Solution has ${lines} non-blank lines; it must have ${r.minLines}–${r.maxLines}`);
+    problems.push(`${who} has ${lines} non-blank lines; it must have ${r.minLines}–${r.maxLines}`);
   }
   if (chars < r.minChars || chars > r.maxChars) {
     problems.push(
-      `Reference Solution has ${chars} characters (leading whitespace and line breaks not counted); ` +
+      `${who} has ${chars} characters (leading whitespace and line breaks not counted); ` +
         `it must have ${r.minChars}–${r.maxChars}`,
     );
   }
@@ -225,15 +253,28 @@ export async function testProblems(puzzle, options) {
 
 // * Symbols
 
-export const targetSymbols = [..."{}[]()<>=!&|+-*/%'\"`$?:;,."];
+// The target symbols per Language. JavaScript's is the `write-puzzle` set.
+// PureScript's is tuned from its real Reference Solutions: it has the same
+// brackets, operators and quotes, plus `\`, `_` and `#`, which its Solutions
+// use all the time (lambdas, wildcards and sections, the `#` pipe); and it
+// drops `!`, `%`, `?` and `;`, which no natural PureScript Solution here
+// needs (`mod` is a word, `!` and `?` exist only as `!!` and typed holes,
+// `;` is not used with layout). Ticket 25 moves both lists into
+// languages/<name>/.
+export const targetSymbols = {
+  javascript: [..."{}[]()<>=!&|+-*/%'\"`$?:;,."],
+  purescript: [..."{}[]()<>=&|+-*/'\"`$:,.\\_#"],
+};
 export const coverageGoal = 5;
 
-// For each target symbol: how many times it appears over all Reference
-// Solutions (`occurrences`) and in how many Reference Solutions
-// (`solutions`). The coverage goal is judged on `solutions`.
-export function symbolCounts(references) {
-  return targetSymbols.map((symbol) => {
-    const perSolution = references.map((r) => r.split(symbol).length - 1);
+// For each of the Language's target symbols: how many times it appears over
+// all Reference Solutions (`occurrences`) and in how many Reference Solutions
+// (`solutions`). The coverage goal is judged on `solutions`. Imports, which the
+// editor inserts, are not counted.
+export function symbolCounts(references, language = "javascript") {
+  const typed = references.map((r) => typedCode(r, language));
+  return targetSymbols[language].map((symbol) => {
+    const perSolution = typed.map((r) => r.split(symbol).length - 1);
     return {
       symbol,
       occurrences: perSolution.reduce((a, b) => a + b, 0),
@@ -242,29 +283,36 @@ export function symbolCounts(references) {
   });
 }
 
-export function symbolReport(references) {
-  const rows = symbolCounts(references).map(({ symbol, occurrences, solutions }) => {
+export function symbolReport(references, language = "javascript") {
+  const rows = symbolCounts(references, language).map(({ symbol, occurrences, solutions }) => {
     const mark = solutions < coverageGoal ? `  <- in fewer than ${coverageGoal}` : "";
     return `  ${symbol}    ${String(solutions).padStart(9)}  ${String(occurrences).padStart(11)}${mark}`;
   });
   return [
-    `Target symbols over ${references.length} Reference Solution(s) (a report, never a failure):`,
+    `Target symbols, ${language}, over ${references.length} Reference Solution(s) (a report, never a failure):`,
     "  sym  solutions  occurrences   (solutions: Reference Solutions containing it)",
     ...rows,
   ].join("\n");
 }
 
+// One report per Language, `references` being {language: [Reference Solution]}.
+export const symbolReports = (references) =>
+  Object.keys(targetSymbols)
+    .map((language) => symbolReport(references[language] ?? [], language))
+    .join("\n\n");
+
 // * The whole bank
 
 // Checks every .toml file in the folder. Resolves to {ok, failures, report}:
 // `failures` is [{file, identity, problems}] for each failing Puzzle file;
-// `report` is the symbol report over the Puzzles that could be read.
+// `report` is the symbol report, one table per Language, over the Puzzles that
+// could be read.
 export async function checkBank(dir = defaultPuzzlesDir, options) {
   const names = readdirSync(dir)
     .filter((n) => extname(n) === ".toml")
     .sort();
   const failures = [];
-  const references = [];
+  const references = Object.fromEntries(Object.keys(targetSymbols).map((l) => [l, []]));
   if (names.length === 0) failures.push({ file: dir, identity: null, problems: ["There are no Puzzle files."] });
   for (const name of names) {
     const identity = name.slice(0, -".toml".length);
@@ -273,9 +321,14 @@ export async function checkBank(dir = defaultPuzzlesDir, options) {
       failures.push({ file: name, identity, problems });
       continue;
     }
-    references.push(puzzle.reference);
-    const found = [...lengthProblems(puzzle.reference), ...(await testProblems(puzzle, options))];
+    references.javascript.push(puzzle.reference);
+    references.purescript.push(puzzle.purescript.reference);
+    const found = [
+      ...lengthProblems(puzzle.reference),
+      ...lengthProblems(puzzle.purescript.reference, "purescript"),
+      ...(await testProblems(puzzle, options)),
+    ];
     if (found.length > 0) failures.push({ file: name, identity, problems: found });
   }
-  return { ok: failures.length === 0, checked: names.length, failures, report: symbolReport(references) };
+  return { ok: failures.length === 0, checked: names.length, failures, report: symbolReports(references) };
 }

@@ -28,5 +28,16 @@ function dotProduct(a, b) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+dotProduct :: Array Int -> Array Int -> Int
+dotProduct a b = ...'''
+reference = '''
+import Prelude
+import Data.Array (zipWith)
+import Data.Foldable (sum)
+
+dotProduct :: Array Int -> Array Int -> Int
+dotProduct a b = sum products
+  where
+    products = zipWith (\x y -> x * y) a b
+'''

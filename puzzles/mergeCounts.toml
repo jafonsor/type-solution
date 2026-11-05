@@ -33,5 +33,15 @@ function mergeCounts(a, b) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+mergeCounts :: Object Int -> Object Int -> Object Int
+mergeCounts a b = ...'''
+reference = '''
+import Prelude
+import Foreign.Object (Object, unionWith)
+
+mergeCounts :: Object Int -> Object Int -> Object Int
+mergeCounts a b = unionWith plus a b
+  where
+    plus x y = x + y
+'''

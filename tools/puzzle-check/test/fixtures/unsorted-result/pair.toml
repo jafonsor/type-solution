@@ -16,10 +16,15 @@ function pair(x, y) {
 '''
 
 [purescript]
-signature = "x :: Int"
-reference = """
+signature = '''
+x :: Int
+x = ...'''
+reference = '''
 import Prelude
 
 x :: Int
-x = 1
-"""
+x = one
+  where
+    -- A constant that these tests never call: the check only reads this Language table's text.
+    one = 1
+'''

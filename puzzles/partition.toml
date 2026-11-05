@@ -31,5 +31,16 @@ function partition(nums, pivot) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+partition :: Array Int -> Int -> Array (Array Int)
+partition nums pivot = ...'''
+reference = '''
+import Prelude
+import Data.Array (filter)
+
+partition :: Array Int -> Int -> Array (Array Int)
+partition nums pivot = [below, rest]
+  where
+    below = filter (_ < pivot) nums
+    rest = filter (\n -> n >= pivot) nums
+'''

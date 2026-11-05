@@ -35,5 +35,15 @@ function triangleType(a, b, c) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+triangleType :: Int -> Int -> Int -> String
+triangleType a b c = ...'''
+reference = '''
+import Prelude
+
+triangleType :: Int -> Int -> Int -> String
+triangleType a b c
+  | a == b && b == c = "equilateral"
+  | a == b || b == c || a == c = "isosceles"
+  | otherwise = "scalene"
+'''

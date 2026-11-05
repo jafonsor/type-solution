@@ -30,5 +30,15 @@ function runningTotal(nums) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+runningTotal :: Array Int -> Array Int
+runningTotal nums = ...'''
+reference = '''
+import Prelude
+import Data.Traversable (scanl)
+
+runningTotal :: Array Int -> Array Int
+runningTotal nums = scanl plus 0 nums
+  where
+    plus total n = total + n
+'''

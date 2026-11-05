@@ -28,5 +28,16 @@ function initials(name) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+initials :: String -> String
+initials name = ...'''
+reference = '''
+import Prelude
+import Data.String (Pattern(..), split, take, toUpper)
+import Data.String.Common (joinWith)
+
+initials :: String -> String
+initials name = name # split (Pattern " ") # map initial # joinWith ""
+  where
+    initial word = toUpper (take 1 word) <> "."
+'''

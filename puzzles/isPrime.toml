@@ -36,5 +36,16 @@ function isPrime(n) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+isPrime :: Int -> Boolean
+isPrime n = ...'''
+reference = '''
+import Prelude
+import Data.Array (range, takeWhile)
+import Data.Foldable (all)
+
+isPrime :: Int -> Boolean
+isPrime n = n > 1 && all (\d -> n `mod` d /= 0) candidates
+  where
+    candidates = takeWhile (\d -> d * d <= n) $ range 2 n
+'''

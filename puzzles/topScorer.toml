@@ -32,5 +32,16 @@ function topScorer(scores) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+topScorer :: Object Int -> String
+topScorer scores = ...'''
+reference = '''
+import Prelude
+import Foreign.Object (Object, fold)
+
+topScorer :: Object Int -> String
+topScorer scores = best.name
+  where
+    best = fold pick { name: "", score: bottom } scores
+    pick leader name score = if score > leader.score then { name, score } else leader
+'''

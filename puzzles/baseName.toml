@@ -32,5 +32,19 @@ function baseName(path) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+baseName :: String -> String
+baseName path = ...'''
+reference = '''
+import Prelude
+import Data.Array (last)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.String (Pattern(..), lastIndexOf, split, take)
+
+baseName :: String -> String
+baseName path = case lastIndexOf (Pattern ".") file of
+  Just dot -> take dot file
+  Nothing -> file
+  where
+    file = fromMaybe path (last (split (Pattern "/") path))
+'''

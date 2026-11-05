@@ -28,5 +28,14 @@ function scale(nums, factor) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+scale :: Array Int -> Int -> Array Int
+scale nums factor = ...'''
+reference = '''
+import Prelude
+
+scale :: Array Int -> Int -> Array Int
+scale nums factor = map scaleOne nums
+  where
+    scaleOne n = n * factor
+'''

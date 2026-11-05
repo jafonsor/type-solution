@@ -31,5 +31,16 @@ function isLeapYear(year) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+isLeapYear :: Int -> Boolean
+isLeapYear year = ...'''
+reference = '''
+import Prelude
+
+isLeapYear :: Int -> Boolean
+isLeapYear year = byFour && (not byHundred || byFourHundred)
+  where
+    byFour = year `mod` 4 == 0
+    byHundred = year `mod` 100 == 0
+    byFourHundred = year `mod` 400 == 0
+'''

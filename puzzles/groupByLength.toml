@@ -31,5 +31,19 @@ function groupByLength(words) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+groupByLength :: Array String -> Object (Array String)
+groupByLength words = ...'''
+reference = '''
+import Prelude
+import Data.Foldable (foldl)
+import Data.Maybe (Maybe(..), maybe)
+import Data.String (length)
+import Foreign.Object (Object, alter, empty)
+
+groupByLength :: Array String -> Object (Array String)
+groupByLength words = foldl add empty words
+  where
+    add groups word = alter (push word) (show (length word)) groups
+    push word = Just <<< maybe [word] (\group -> group <> [word])
+'''

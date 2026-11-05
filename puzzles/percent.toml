@@ -34,5 +34,15 @@ function percent(part, whole) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+percent :: Int -> Int -> Int
+percent part whole = ...'''
+reference = '''
+import Prelude
+import Data.Int (round, toNumber)
+
+percent :: Int -> Int -> Int
+percent part whole
+  | whole == 0 = 0
+  | otherwise = round $ toNumber part * 100.0 / toNumber whole
+'''

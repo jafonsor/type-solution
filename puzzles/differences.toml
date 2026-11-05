@@ -29,5 +29,15 @@ function differences(nums) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+differences :: Array Int -> Array Int
+differences nums = ...'''
+reference = '''
+import Prelude
+import Data.Array (drop, zipWith)
+
+differences :: Array Int -> Array Int
+differences nums = zipWith (-) later nums
+  where
+    later = drop 1 nums
+'''

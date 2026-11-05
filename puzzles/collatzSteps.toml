@@ -34,5 +34,17 @@ function collatzSteps(n) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+collatzSteps :: Int -> Int
+collatzSteps n = ...'''
+reference = '''
+import Prelude
+
+collatzSteps :: Int -> Int
+collatzSteps n = go n 0
+  where
+    go 1 steps = steps
+    go k steps
+      | k `mod` 2 == 0 = go (k `div` 2) (steps + 1)
+      | otherwise = go (3 * k + 1) (steps + 1)
+'''

@@ -33,5 +33,17 @@ function slugify(title) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+slugify :: String -> String
+slugify title = ...'''
+reference = '''
+import Prelude
+import Data.Array (filter)
+import Data.String (Pattern(..), split, toLower)
+import Data.String.Common (joinWith)
+
+slugify :: String -> String
+slugify title = title # toLower # split (Pattern " ") # filter notEmpty # joinWith "-"
+  where
+    notEmpty word = word /= ""
+'''

@@ -31,5 +31,18 @@ function abbreviate(word) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+abbreviate :: String -> String
+abbreviate word = ...'''
+reference = '''
+import Prelude
+import Data.String (drop, length, take)
+
+abbreviate :: String -> String
+abbreviate word
+  | length word <= 3 = word
+  | otherwise = first <> show (length word - 2) <> last
+  where
+    first = take 1 word
+    last = drop (length word - 1) word
+'''

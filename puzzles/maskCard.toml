@@ -31,5 +31,17 @@ function maskCard(number) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+maskCard :: String -> String
+maskCard number = ...'''
+reference = '''
+import Prelude
+import Data.Array (replicate)
+import Data.String.CodeUnits (drop, fromCharArray, length)
+
+maskCard :: String -> String
+maskCard number = if hidden <= 0 then number else stars <> drop hidden number
+  where
+    hidden = length number - 4
+    stars = fromCharArray $ replicate hidden '*'
+'''

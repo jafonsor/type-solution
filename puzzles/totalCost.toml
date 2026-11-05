@@ -29,5 +29,17 @@ function totalCost(cart, prices) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+totalCost :: Object Int -> Object Int -> Int
+totalCost cart prices = ...'''
+reference = '''
+import Prelude
+import Data.Foldable (sum)
+import Data.Maybe (fromMaybe)
+import Foreign.Object (Object, lookup, mapWithKey)
+
+totalCost :: Object Int -> Object Int -> Int
+totalCost cart prices = sum (mapWithKey cost cart)
+  where
+    cost item qty = qty * fromMaybe 0 (lookup item prices)
+'''

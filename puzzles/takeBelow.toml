@@ -34,5 +34,16 @@ function takeBelow(nums, limit) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+takeBelow :: Array Int -> Int -> Array Int
+takeBelow nums limit = ...'''
+reference = '''
+import Prelude
+import Data.Array (cons, uncons)
+import Data.Maybe (Maybe(..))
+
+takeBelow :: Array Int -> Int -> Array Int
+takeBelow nums limit = case uncons nums of
+  Just { head, tail } | head < limit -> cons head (takeBelow tail limit)
+  _ -> []
+'''

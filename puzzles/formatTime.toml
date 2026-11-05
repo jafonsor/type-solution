@@ -26,5 +26,15 @@ function formatTime(seconds) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+formatTime :: Int -> String
+formatTime seconds = ...'''
+reference = '''
+import Prelude
+
+formatTime :: Int -> String
+formatTime seconds = show clock.minutes <> ":" <> pad clock.rest
+  where
+    clock = { minutes: seconds `div` 60, rest: seconds `mod` 60 }
+    pad s = if s < 10 then "0" <> show s else show s
+'''

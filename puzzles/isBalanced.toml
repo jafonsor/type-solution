@@ -39,5 +39,21 @@ function isBalanced(text) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+isBalanced :: String -> Boolean
+isBalanced text = ...'''
+reference = '''
+import Prelude
+import Data.Array (uncons)
+import Data.Maybe (Maybe(..))
+import Data.String.CodeUnits (toCharArray)
+
+isBalanced :: String -> Boolean
+isBalanced text = go 0 (toCharArray text)
+  where
+    go depth chars = case uncons chars of
+      Nothing -> depth == 0
+      Just { head: '(', tail } -> go (depth + 1) tail
+      Just { head: ')', tail } -> depth > 0 && go (depth - 1) tail
+      Just { tail } -> go depth tail
+'''

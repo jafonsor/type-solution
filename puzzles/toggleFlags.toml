@@ -29,5 +29,17 @@ function toggleFlags(flags, names) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+toggleFlags :: Object Boolean -> Array String -> Object Boolean
+toggleFlags flags names = ...'''
+reference = '''
+import Prelude
+import Data.Foldable (foldl)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Foreign.Object (Object, alter)
+
+toggleFlags :: Object Boolean -> Array String -> Object Boolean
+toggleFlags flags names = foldl toggle flags names
+  where
+    toggle result name = alter (\flag -> Just (not (fromMaybe false flag))) name result
+'''

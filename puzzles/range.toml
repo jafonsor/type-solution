@@ -36,5 +36,15 @@ function range(start, end) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+range :: Int -> Int -> Array Int
+range start end = ...'''
+reference = '''
+import Prelude
+import Data.Array (cons)
+
+range :: Int -> Int -> Array Int
+range start end
+  | end <= start = []
+  | otherwise = cons start (range (start + 1) end)
+'''

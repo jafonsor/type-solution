@@ -30,5 +30,18 @@ function isPalindrome(text) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+isPalindrome :: String -> Boolean
+isPalindrome text = ...'''
+reference = '''
+import Prelude
+import Data.Array (reverse)
+import Data.String (toLower)
+import Data.String.CodeUnits (fromCharArray, toCharArray)
+
+isPalindrome :: String -> Boolean
+isPalindrome text = lower == reversed
+  where
+    lower = toLower text
+    reversed = lower # toCharArray # reverse # fromCharArray
+'''

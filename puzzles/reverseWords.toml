@@ -29,5 +29,17 @@ function reverseWords(text) {
 '''
 
 [purescript]
-signature = "-- placeholder until ticket 24"
-reference = "-- placeholder until ticket 24"
+signature = '''
+reverseWords :: String -> String
+reverseWords text = ...'''
+reference = '''
+import Prelude
+import Data.Array (reverse)
+import Data.String (Pattern(..), split)
+import Data.String.Common (joinWith)
+
+reverseWords :: String -> String
+reverseWords text = joinWith " " reversed
+  where
+    reversed = text # split (Pattern " ") # reverse
+'''
