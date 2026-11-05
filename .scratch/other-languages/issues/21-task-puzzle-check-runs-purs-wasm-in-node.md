@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: the Nix-built `purs-core.wasm` (spec Build order, step 3). Until it exists, point `PURS_WASM` at the ticket 10 artifact to develop against.
 
 # 21: puzzle-check compiles PureScript Reference Solutions with the wasm compiler, in Node
@@ -33,3 +33,7 @@ A PureScript runner for `tools/puzzle-check/run-solutions.js` (`npm run solution
 ## Not covered here
 
 Writing the 50 PureScript Reference Solutions (Build order, step 1), the `[javascript]` migration of Puzzle files (step 2), and building the wasm in Nix (step 3).
+
+## Comments
+
+Closed during the implement-spec run, 2026-11-05. Landed in aaee577, 17644da, 56f3dae. Reviewed: `npm test --prefix tools/puzzle-check` with `PURS_WASM` (the native-GHC `purs-core.wasm`) and `PURS_LIBS` (Prelude) gives 36 pass, 0 skipped. Covered: passing `clamp` fixture, type error, syntax error, failing test, missing `PURS_WASM`, off-list and wrapped imports. The `npm run solutions` row per Puzzle appears once the Puzzle files carry `[purescript]` tables (tickets 22, 23, 24). `PURS_LIBS` stays until ticket 25 commits the pinned list.
