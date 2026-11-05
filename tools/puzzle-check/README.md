@@ -18,3 +18,21 @@ The tests run through the browser's own test-runner script, `static/src/js/runne
 It always prints a symbol report: for each target symbol, how many Reference Solutions contain it and how many times it occurs in all of them. Symbols in fewer than 5 Reference Solutions are marked. The report never fails the check; the authoring rules ask for every symbol in at least 5 Reference Solutions across the bank.
 
 `node check.js <folder>` checks another folder. `npm test --prefix tools/puzzle-check` runs the check's own tests, on the Puzzle files in `test/fixtures/` (kept out of `puzzles/`, which the build embeds whole).
+
+## Running every Solution in every Language
+
+```sh
+npm run solutions --prefix tools/puzzle-check                      # all Puzzles, all Languages
+npm run solutions --prefix tools/puzzle-check -- --lang=javascript --puzzle=clamp
+```
+
+`run-solutions.js` prints a Puzzle × Language table (`ok` / `FAIL`, with the failing tests under it) and exits 1 if any Solution fails or a Language has no runner. It only runs the tests; the length and symbol rules stay in `npm run check`. Today every Puzzle has one Solution, in JavaScript. For another Language, make `solutionsOf` read its Solutions from the Puzzle file and add its runner to `runners`.
+
+### PureScript
+
+`purs-runner.js` is the `purescript` runner. It compiles a Reference Solution with `purs-core.wasm`, the compiler the browser downloads, in Node through WASI, then runs the generated JavaScript against the tests (curried calls; `Tuple` results become JSON pairs; same pass rule and 1 s timeout as the JavaScript runner). It also fails a Solution whose imports aren't one line or name a module outside the pinned libraries.
+
+- `PURS_WASM=/path/to/purs-core.wasm` is required. Unset, every PureScript row fails with "no compiler configured for purescript".
+- `PURS_LIBS=/path/to/libs` is a folder of pinned library checkouts (`<name>/src/**/*.purs` with their `.js` files). Until the pinned list is committed under `languages/purescript/`, this folder is the list.
+
+The first check builds the libraries' externs (about 3.5 s for Prelude); later checks take 0.2 to 0.4 s. Positions in compile errors refer to the Solution text as written. The runner is not yet reached from the command line, because Puzzle files have no `[purescript]` table (`solutionsOf` still returns only JavaScript); `npm test` exercises it with the fixtures in `test/purs-fixtures/`, skipping the ones that compile unless both variables are set.
