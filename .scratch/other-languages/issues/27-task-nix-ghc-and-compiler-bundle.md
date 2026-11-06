@@ -2,38 +2,36 @@ Type: task
 Status: ready-for-agent
 Blocked by: none
 
-# 27: Nix package for the `gmp`-free GHC and `purs-core.wasm`
+# 27: The `gmp`-free GHC and `purs-core.wasm`: built in `purs-wasm`, shipped as a release
 
 ## What to build
 
-Build order step 3, first half. Write the derivation with every input pinned (closed box, no network), build it first in Docker as `linux/amd64` with CPU, memory and disk capped to the GitHub runner's, then confirm in a real GitHub Actions run that the roughly 34 min result is cached between runs. Output: `purs-core.wasm`, which ticket 21's `PURS_WASM` then points at.
+Build order step 3, first half. Amended 2026-11-06 (owner): the compiler is not built in this repo's `nix build`. It is built in its own repository, [jafonsor/purs-wasm](https://github.com/jafonsor/purs-wasm) (public), by a GitHub Actions workflow, and published as a GitHub Release asset. This repo fetches the released `purs-core.wasm` with `fetchurl` and a pinned hash; ticket 21's `PURS_WASM` points at it.
+
+Why: the app's own build and `deploy.yml` then never compile GHC; a dev who only works on the app downloads 23 MB. A dev who changes the compiler or its patch builds in `purs-wasm`. The GHC is a dependency of that repo, not of this one. See [ADR 0003](../../../docs/adr/0003-a-static-deploy-with-a-lazy-loaded-compiler-bundle.md).
 
 ## Acceptance
 
-- [x] `nix build .#purs-core-wasm` yields `purs-core.wasm` (built in Docker `linux/amd64`, 4 CPU, 16 GB; 50 of 50 PureScript Reference Solutions pass `npm run solutions -- --lang=purescript` with it); the app's own `nix build` is unchanged.
-- [x] The GHC derivation (`.#ghc-wasm-native`) is separate and its derivation path does not change when a Puzzle file changes.
-- [ ] A second CI run reuses the cached GHC (OPEN: needs a real GitHub Actions run, see the steps below).
-- Decided in the grilling below; no open questions.
+- [x] The `gmp`-free wasm GHC and `purs-core.wasm` build from pinned inputs in a closed box (Docker `linux/amd64`, 4 CPU, 16 GB, then GitHub Actions). 50 of 50 PureScript Reference Solutions pass `npm run solutions -- --lang=purescript` with the Docker-built wasm.
+- [x] The GHC derivation is separate and its derivation path does not change when a Puzzle file changes (proved before the move; `purs-wasm` has no Puzzle files at all).
+- [x] A second CI run reuses the cached GHC: `purs-wasm` Actions run 42125872153 (BUILT, about 1 h for the GHC) and run 42136973924 (FETCHED, whole job 32 min), same derivation path `sbxn593szxbfyc55scs7p080kv302r2b-ghc-wasm-native-9.14.1.20261012.drv`.
+- [x] The pruned GHC (about 84 MB as `tar.xz`, [research 12](../research/12-ghc-wasm-compression.md)) builds in CI; a smoke test compiles Template Haskell with it; `purs-core` built with the pruned GHC has the same bytes as with the full one (run 42136973924).
+- [x] This repo's duplicate `nix/` folder, flake attributes and `purs-wasm.yml` workflow are removed; the spec, ADR 0003, the map and tickets 10, 13 and 25 point at `purs-wasm`.
+- [ ] OPEN: a release is published in `purs-wasm` (tag `v0.15.16-1`, which runs its `release` job), and this repo gets a fixed-output `fetchurl` derivation for `purs-core.wasm` with the release's sha256; `PURS_WASM` for the tests can be set from it. Needs the owner's go-ahead to tag, because a release is public.
 
 ## Comments
 
-Decisions (owner, 2026-11-05):
+Decisions (owner, 2026-11-05 and 2026-11-06):
 
-- **CI cache:** keep `magic-nix-cache-action` (already in `deploy.yml`). Move to Cachix only if the Actions cache evicts the GHC build in practice.
-- **Caching check:** the second run must show the GHC derivation fetched from the cache, not built; and a change to an unrelated file (e.g. a puzzle) must leave the GHC derivation hash unchanged. Cache survival over days is only a note, not testable here.
-- **If GHC fails under Docker/Rosetta:** skip to CI and iterate there on a throwaway branch with a dedicated `workflow_dispatch`-only workflow file, so Pages deploy is never triggered. No pause needed.
-- **Docker caps:** the repo is public, so match the standard runner: 4 CPU, 16 GB RAM, about 14 GB free disk. Expect a cold build well over 34 min.
+- **CI cache:** `magic-nix-cache-action` in `purs-wasm`; Cachix only if the Actions cache evicts the GHC build in practice.
+- **Docker caps:** match the standard runner (4 CPU, 16 GB RAM, about 14 GB free disk).
+- **Release asset, not a rebuild in this repo (2026-11-06):** a build of the same inputs with a different GHC store path gives different wasm bytes, so the released file is the source of truth. The GHC is a dependency of `purs-wasm`; this repo needs only the wasm.
+- **The app's `frontend.wasm`** keeps the `ghc-wasm-meta` bindist (with `gmp`), unchanged (ADR 0003). Unifying the two toolchains was considered and left alone: the two wasm files only meet through a worker and JSON.
 
-Progress: done in Docker and on the Mac, one criterion open. New: `nix/` (`default.nix`, `ghc-wasm-native.nix`, `purs-core.nix`, `purescript/` with the patch moved here, `cheapskate.patch`, `hackage.json`, `purs-core-Main.hs`), flake attributes `.#ghc-wasm-native` and `.#purs-core-wasm` (not in `default`), and `.github/workflows/purs-wasm.yml` (`workflow_dispatch` only, never deploys). `languages/purescript/language.json` now points `compilerPatch` at `nix/purescript/purescript.patch`.
+Measured (all in `purs-wasm`):
+- Docker Desktop with Rosetta (`--cpus=4 --memory=16g`): GHC about 2 h 54 min cold (hadrian 2 h 37 min, install 15 min), `purs-core.wasm` 13 min more. Three attempts were needed (locale `LANG=C.UTF-8`; `VERSION_DATE` for the snapshot version; `nodejs` in `nativeBuildInputs` for the bindist's shebangs).
+- GitHub Actions `ubuntu-latest`: GHC about 1 h cold. Full install 3441 MB; pruned 652 MB (Mac install measured), `tar.xz` about 84 MB.
+- `purs-core.wasm` from Docker: 23,585,103 bytes (2,274,724 brotli), no `gmp` symbols, sha256 `7e95c64d9b626c0c7b373f4bc8a7fa22b745fee49c6e85f2aa50836758232909`. It differs from ticket 14's Mac wasm (23,625,988 bytes) and from other rebuilds: ticket 14's "byte-identical" meant the compiler's output (externs and JavaScript), not the wasm.
+- The Actions artifact of run 42136973924 is the wasm the first release should publish; check its sha256 against the file the run printed before tagging.
 
-Measured (Docker Desktop, Rosetta, `--cpus=4 --memory=16g`, ~27 GB free after pruning Docker's build cache):
-- GHC (hadrian `perf+native_bignum` plus bindist install): about 2 h 54 min cold (hadrian 2 h 37 min, install 15 min). Three runs were needed: the first two failed on a locale (`LANG=C.UTF-8`, fixed) and on the snapshot version taking today's date (`VERSION_DATE`, fixed), then node missing from the bindist's shebangs (`nodejs` in `nativeBuildInputs`, fixed).
-- `purs-core.wasm`: 13 min on top. 23,585,103 bytes (2,274,724 brotli), no `gmp` symbols. Not byte-identical to ticket 14's Mac wasm (23,625,988 bytes): different GHC build, different tool versions (`happy` from nixpkgs, `cborg` at a pinned master commit).
-- Second Docker run of the same attributes: 23 s, nothing built, same store paths.
-- Disk: the GHC build tree is large; a 14 GB runner will not hold it. `deploy.yml`'s "Free disk space" step is needed in the new workflow too (it has it).
-
-Steps for the owner to close the last criterion (needs GitHub, I cannot run it):
-1. Push this branch, then on the Actions tab run the workflow "PureScript wasm" (`workflow_dispatch`) on it. First run: the summary says "GHC derivation ... BUILT"; expect well over 34 min, probably 1 to 2 h with 4 cores native.
-2. Run it again with no change: the summary must say "FETCHED from the cache (not built)" and the log must show no `ghc-wasm-native>` build lines.
-3. Change an unrelated file (for example append a space to a Puzzle `.toml`), push, run it a third time: the "derivation" line must be the same path as before (and still FETCHED).
-4. If the first run fails or the cache does not keep it (magic-nix-cache evicts), the decision above says: iterate on a throwaway branch with this workflow; move to Cachix only if eviction is real. Tick the criterion and set `Status: resolved` only after step 2 and 3 pass.
+Next for whoever picks up the open criterion: confirm the release assets (`purs-core.wasm`, its `.sha256`, `ghc-wasm-native-x86_64-linux.tar.xz`, `BUILDINFO.json`), tag `v0.15.16-1` in `purs-wasm`, then add the `fetchurl` derivation. Ticket 28 builds on it.

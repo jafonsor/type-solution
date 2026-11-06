@@ -12,18 +12,6 @@
   outputs = inputs@{ self, ... }:
     let nixpkgs = if inputs ? "nixpkgs" then inputs.nixpkgs else builtins.getFlake "nixpkgs";
         eachSystem = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
-
-        # Only these have a wasi-sdk and a wasm GHC bindist to build with.
-        pursSystems = [ "x86_64-linux" "aarch64-linux" "aarch64-darwin" "x86_64-darwin" ];
-        purs = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed (system:
-          let bundle = import ./nix {
-                pkgs = nixpkgs.legacyPackages.${system};
-                ghcWasmMeta = import "${inputs.nix-haskell}/pins/ghc-wasm-meta/thunk.nix";
-              };
-          in nixpkgs.lib.optionalAttrs (builtins.elem system pursSystems) {
-            ghc-wasm-native = bundle.ghc-wasm-native;
-            purs-core-wasm = bundle.purs-core-wasm;
-          });
     in {
       legacyPackages = eachSystem (system:
         import ./default.nix { inherit system inputs; }
@@ -31,15 +19,11 @@
 
       packages = eachSystem (system:
         let project = import ./default.nix { inherit system inputs; };
-        in (rec {
+        in rec {
           default = haskell-nix;
           haskell-nix = project.haskell-nix.serverExe.wasm;
           nixpkgs = project.nixpkgs.serverExe.js;
-        }
-        # The PureScript compiler bundle (ticket 27), built from pinned inputs
-        # only: the gmp-free wasm GHC (cached on its own) and purs-core.wasm.
-        # Not part of `default`, so the app's `nix build` is unchanged.
-        // purs.${system}));
+        });
 
       checks = eachSystem (system:
         let project = import ./default.nix { inherit system inputs; };

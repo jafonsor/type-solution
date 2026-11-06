@@ -8,5 +8,5 @@
   "callingConvention": "calling-convention.md",
   "authoring": "authoring.md",
   "nameClashes": "name-clashes.json",
-  "compilerPatch": "nix/purescript/purescript.patch"
+  "compilerPatch": "https://github.com/jafonsor/purs-wasm/blob/main/nix/purescript/purescript.patch"
 }
