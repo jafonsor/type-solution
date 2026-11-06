@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: none
 
 # 27: The `gmp`-free GHC and `purs-core.wasm`: built in `purs-wasm`, shipped as a release
@@ -17,7 +17,7 @@ Why: the app's own build and `deploy.yml` then never compile GHC; a dev who only
 - [x] A second CI run reuses the cached GHC: `purs-wasm` Actions run 42125872153 (BUILT, about 1 h for the GHC) and run 42136973924 (FETCHED, whole job 32 min), same derivation path `sbxn593szxbfyc55scs7p080kv302r2b-ghc-wasm-native-9.14.1.20261012.drv`.
 - [x] The pruned GHC (about 84 MB as `tar.xz`, [research 12](../research/12-ghc-wasm-compression.md)) builds in CI; a smoke test compiles Template Haskell with it; `purs-core` built with the pruned GHC has the same bytes as with the full one (run 42136973924).
 - [x] This repo's duplicate `nix/` folder, flake attributes and `purs-wasm.yml` workflow are removed; the spec, ADR 0003, the map and tickets 10, 13 and 25 point at `purs-wasm`.
-- [ ] OPEN: a release is published in `purs-wasm` (tag `v0.15.16-1`, which runs its `release` job), and this repo gets a fixed-output `fetchurl` derivation for `purs-core.wasm` with the release's sha256; `PURS_WASM` for the tests can be set from it. Needs the owner's go-ahead to tag, because a release is public.
+- [x] The last piece, publishing the first release and fetching it here with a pinned hash, moved to [ticket 36](36-task-publish-purs-wasm-release.md).
 
 ## Comments
 
@@ -34,4 +34,4 @@ Measured (all in `purs-wasm`):
 - `purs-core.wasm` from Docker: 23,585,103 bytes (2,274,724 brotli), no `gmp` symbols, sha256 `7e95c64d9b626c0c7b373f4bc8a7fa22b745fee49c6e85f2aa50836758232909`. It differs from ticket 14's Mac wasm (23,625,988 bytes) and from other rebuilds: ticket 14's "byte-identical" meant the compiler's output (externs and JavaScript), not the wasm.
 - The Actions artifact of run 42136973924 is the wasm the first release should publish; check its sha256 against the file the run printed before tagging.
 
-Next for whoever picks up the open criterion: confirm the release assets (`purs-core.wasm`, its `.sha256`, `ghc-wasm-native-x86_64-linux.tar.xz`, `BUILDINFO.json`), tag `v0.15.16-1` in `purs-wasm`, then add the `fetchurl` derivation. Ticket 28 builds on it.
+Next: [ticket 36](36-task-publish-purs-wasm-release.md) publishes the first release (confirm the release assets, tag `v0.15.16-1` in `purs-wasm`) and adds the `fetchurl` derivation. Ticket 28 builds on it.
