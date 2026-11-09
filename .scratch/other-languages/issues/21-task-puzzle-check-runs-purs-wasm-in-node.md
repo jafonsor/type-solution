@@ -37,3 +37,5 @@ Writing the 50 PureScript Reference Solutions (Build order, step 1), the `[javas
 ## Comments
 
 Closed during the implement-spec run, 2026-11-05. Landed in aaee577, 17644da, 56f3dae. Reviewed: `npm test --prefix tools/puzzle-check` with `PURS_WASM` (the native-GHC `purs-core.wasm`) and `PURS_LIBS` (Prelude) gives 36 pass, 0 skipped. Covered: passing `clamp` fixture, type error, syntax error, failing test, missing `PURS_WASM`, off-list and wrapped imports. The `npm run solutions` row per Puzzle appears once the Puzzle files carry `[purescript]` tables (tickets 22, 23, 24). `PURS_LIBS` stays until ticket 25 commits the pinned list.
+
+Update (ticket 36): `PURS_WASM` can come from the pinned release: `PURS_WASM=$(nix build .#purs-core-wasm --no-link --print-out-paths)`. Bumping it: README of `tools/puzzle-check`, "Bumping the compiler".

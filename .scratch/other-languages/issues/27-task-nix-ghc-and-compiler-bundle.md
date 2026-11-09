@@ -17,7 +17,7 @@ Why: the app's own build and `deploy.yml` then never compile GHC; a dev who only
 - [x] A second CI run reuses the cached GHC: `purs-wasm` Actions run 42125872153 (BUILT, about 1 h for the GHC) and run 42136973924 (FETCHED, whole job 32 min), same derivation path `sbxn593szxbfyc55scs7p080kv302r2b-ghc-wasm-native-9.14.1.20261012.drv`.
 - [x] The pruned GHC (about 84 MB as `tar.xz`, [research 12](../research/12-ghc-wasm-compression.md)) builds in CI; a smoke test compiles Template Haskell with it; `purs-core` built with the pruned GHC has the same bytes as with the full one (run 42136973924).
 - [x] This repo's duplicate `nix/` folder, flake attributes and `purs-wasm.yml` workflow are removed; the spec, ADR 0003, the map and tickets 10, 13 and 25 point at `purs-wasm`.
-- [x] The last piece, publishing the first release and fetching it here with a pinned hash, moved to [ticket 36](36-task-publish-purs-wasm-release.md).
+- [x] The last piece, publishing the first release and fetching it here with a pinned hash, moved to [ticket 36](36-task-publish-purs-wasm-release.md) and is done there (commit "Ticket 36: publish the first purs-wasm release ...").
 
 ## Comments
 

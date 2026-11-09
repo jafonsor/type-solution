@@ -11,6 +11,7 @@
 
   outputs = inputs@{ self, ... }:
     let nixpkgs = if inputs ? "nixpkgs" then inputs.nixpkgs else builtins.getFlake "nixpkgs";
+        pkgsLib = nixpkgs;
         eachSystem = nixpkgs.lib.genAttrs nixpkgs.lib.systems.flakeExposed;
     in {
       legacyPackages = eachSystem (system:
@@ -23,6 +24,9 @@
           default = haskell-nix;
           haskell-nix = project.haskell-nix.serverExe.wasm;
           nixpkgs = project.nixpkgs.serverExe.js;
+        } // {
+          # The released compiler (a fetch, not a build). Not the default.
+          purs-core-wasm = pkgsLib.legacyPackages.${system}.callPackage ./purs-wasm.nix {};
         });
 
       checks = eachSystem (system:
