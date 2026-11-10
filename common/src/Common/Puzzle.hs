@@ -6,6 +6,7 @@ module Common.Puzzle
   ( Puzzle (..)
   , LanguageTable (..)
   , PuzzleTest (..)
+  , languageTable
   , callText
   , valueText
     -- * Puzzle files
@@ -68,6 +69,14 @@ data PuzzleTest = PuzzleTest
   }
   deriving stock (Eq, Show, Lift)
 
+-- | The Puzzle's table for the Language with this name (the shim's registry
+-- name, @"javascript"@ or @"purescript"@), if the Puzzle file format knows it.
+languageTable :: Text -> Puzzle -> Maybe LanguageTable
+languageTable name p = case name of
+  "javascript" -> Just p.javascript
+  "purescript" -> Just p.purescript
+  _ -> Nothing
+
 -- | How a test's call reads, e.g. @fizzBuzz(10)@.
 callText :: Puzzle -> PuzzleTest -> Text
 callText p t = p.function <> "(" <> T.intercalate ", " (map valueText t.args) <> ")"
@@ -120,13 +129,13 @@ instance Toml.FromValue PuzzleFile where
   fromValue = Toml.parseTableFromValue do
     f <- Toml.reqKey "function"
     p <- Toml.reqKey "prompt"
-    js <- Toml.reqKeyOf "javascript" languageTable
-    ps <- Toml.reqKeyOf "purescript" languageTable
+    js <- Toml.reqKeyOf "javascript" tableOf
+    ps <- Toml.reqKeyOf "purescript" tableOf
     ts <- Toml.reqKeyOf "tests" (Toml.listOf \_ -> Toml.parseTableFromValue puzzleTest)
     pure $ PuzzleFile \i -> Puzzle
       { identity = i, function = f, prompt = p, javascript = js, purescript = ps, tests = ts }
     where
-      languageTable = Toml.parseTableFromValue $
+      tableOf = Toml.parseTableFromValue $
         LanguageTable <$> Toml.reqKey "signature" <*> Toml.reqKey "reference"
       puzzleTest = PuzzleTest
         <$> Toml.reqKeyOf "args" (Toml.listOf \_ -> json)

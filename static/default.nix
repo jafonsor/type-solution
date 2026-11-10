@@ -9,7 +9,13 @@ let
   editor = pkgs.buildNpmPackage {
     pname = "type-solution-editor";
     version = "0.1.0";
-    src = ./editor;
+    # The shim also imports the Language-agnostic bundle trigger
+    # (bundle/trigger.mjs), so the source holds both folders.
+    src = pkgs.lib.fileset.toSource {
+      root = ./.;
+      fileset = pkgs.lib.fileset.unions [ ./editor ./bundle ];
+    };
+    sourceRoot = "source/editor";
     npmDepsHash = "sha256-pChH5S0y7nktUZ4jczTVS6jlyJXBDPf+o8uaXXO8HuY=";
     nativeBuildInputs = [ pkgs.esbuild ];
     dontNpmBuild = true;

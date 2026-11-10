@@ -11,6 +11,8 @@
 //     createChecker,   // seam 1: ({Worker, url}) => Checker
 //     editorMode,      // seam 2: () => CodeMirror extension
 //     importRules,     // seam 3, optional: absent means no import popup
+//     bundle,          // optional: {start() -> promise}, the Language's lazy
+//                      // download (static/bundle/trigger.mjs decides when)
 //   }
 //
 // A Checker is {check(code, fn, tests), stop()}. check returns a promise of
@@ -38,6 +40,11 @@ export function languageNamed(name) {
 
 export function languageNames() {
   return [...registry.keys()];
+}
+
+// Every Language, in registration order (the dropdown's order).
+export function languageList() {
+  return [...registry.values()];
 }
 
 registerLanguage(javascript);

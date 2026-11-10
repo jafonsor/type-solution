@@ -5,9 +5,11 @@
 // CSS variable (static/src/css/app.css), so the editor follows the page's
 // light and dark schemes.
 //
-//   const editor = TypeSolution.createEditor(parent, onChange, onEscape, onKey, language);
+//   const editor = TypeSolution.createEditor(parent, onChange, onEscape, onKey, onCycle, language);
 //     // language is a Language's name (languages.mjs; "javascript" if omitted
 //     // or unknown): the editor's mode, i.e. colouring and indent rules.
+//     // onCycle gets every Alt+L pressed in the editor (it isn't a key press
+//     // a Run counts); the page answers with editor.setLanguage(editor.nextLanguage()).
 //     // onKey(key, time) gets each key press a Run counts, while the editor
 //     // is editable: key is the character the browser typed, or " ", "\n",
 //     // "\t" or "\b" for Space, Enter, Tab and Backspace (Common.Run's
@@ -17,7 +19,16 @@
 //     // menu's buttons included), so it works while the editor is read-only.
 //   editor.setDoc(text);   // replace the document without calling onChange
 //   editor.setReadOnly(b); // true: no typing and Tab moves focus; false: back
-//   editor.setLanguage(name); // swap only the mode, keeping text and history
+//   editor.setLanguage(name); // pick a Language: keeps the current draft (text,
+//                             // cursor, undo history) for the one left, shows
+//                             // the picked one's (empty if untouched), remembers
+//                             // the choice in this browser and starts that
+//                             // Language's bundle download the first time.
+//                             // Returns the document now shown (unchanged if
+//                             // the name is the current or an unknown one, or the
+//                             // editor is read-only: no Language switch then).
+//   editor.nextLanguage();    // the name Alt+L would pick
+//   editor.reset();           // a new Run: every draft goes, the document is empty
 //   editor.focus();
 //   TypeSolution.focus(element)     // focus a page element, e.g. a button
 //   TypeSolution.random()           // Math.random(), a number in [0, 1)
@@ -42,9 +53,11 @@ import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } fr
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { tags as t } from "@lezer/highlight";
 import * as storage from "./storage.mjs";
-import { languageNamed } from "./languages.mjs";
+import { languageNamed, languageList, languageNames, registerLanguage, DEFAULT_LANGUAGE } from "./languages.mjs";
 import { createCheckSession } from "./run-check.mjs";
 import { createMode } from "./editor-mode.mjs";
+import { createLanguageChoice } from "./language-choice.mjs";
+import { createBundleTrigger } from "../../bundle/trigger.mjs";
 
 const theme = EditorView.theme({
   "&": { color: "var(--editor-fg)", backgroundColor: "var(--editor-bg)" },
@@ -98,10 +111,33 @@ function editing(on) {
     : [EditorState.readOnly.of(true), EditorView.editable.of(false)];
 }
 
-function createEditor(parent, onChange, onEscape, onKey, languageName) {
+// The Language choice and the bundle trigger, made on first use (after every
+// Language is registered) and shared: the remembered Language is read once.
+let choice = null;
+let trigger = null;
+function languageChoice() {
+  if (choice) return choice;
+  trigger = createBundleTrigger({
+    languages: languageList(),
+    start: async (name) => languageNamed(name).bundle.start?.(),
+  });
+  let storage = { getItem: () => null, setItem: () => {} };
+  try { storage = localStorage; } catch { /* blocked site data: nothing is remembered */ }
+  choice = createLanguageChoice({
+    names: languageNames(), fallback: DEFAULT_LANGUAGE, storage, onPick: (name) => trigger.onPick(name),
+  });
+  trigger.onPageLoad(choice.current); // the remembered Language's bundle, if it has one
+  return choice;
+}
+
+// The remembered Language's name, or JavaScript: what a page opens in.
+function initialLanguage() { return languageChoice().current; }
+
+function createEditor(parent, onChange, onEscape, onKey, onCycle) {
   let programmatic = false;
+  const languages = languageChoice();
   const mode = new Compartment(); // editing or read-only
-  const language = createMode(languageNamed(languageName)); // the Language's mode
+  const language = createMode(languageNamed(languages.current)); // the Language's mode
   // Esc is caught for the whole page, before the editor sees it: once the
   // menu is open the focus is on its buttons, not in the editor.
   document.addEventListener("keydown", (e) => {
@@ -110,36 +146,45 @@ function createEditor(parent, onChange, onEscape, onKey, languageName) {
       onEscape();
     }
   }, true);
-  const view = new EditorView({
-    parent,
-    state: EditorState.create({
-      doc: "",
-      extensions: [
-        lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-        theme, syntaxHighlighting(highlight), language.extension,
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        mode.of(editing(true)),
-        Prec.highest(EditorView.domEventHandlers({
-          keydown(e, view) {
-            // Esc belongs to the page's listener above.
-            if (e.key === "Escape") return true;
-            // Read-only (the menu is open), nothing is typing: Tab moves
-            // the focus on.
-            if (view.state.readOnly) return false;
-            const key = keyOf(e);
-            // timeStamp: when the key went down, on the page's monotonic
-            // clock, so the time between presses is exact to well under a
-            // millisecond however busy the page is afterwards.
-            if (key !== null) onKey(key, e.timeStamp);
-            return false;
-          },
-        })),
-        EditorView.updateListener.of((u) => {
-          if (u.docChanged && !programmatic) onChange(u.state.doc.toString());
-        }),
-      ],
-    }),
+  // A fresh state, empty: the document of a Language not yet typed in.
+  const freshState = () => EditorState.create({
+    doc: "",
+    extensions: [
+      lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
+      theme, syntaxHighlighting(highlight), language.extension,
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      mode.of(editing(true)),
+      Prec.highest(EditorView.domEventHandlers({
+        keydown(e, view) {
+          // Esc belongs to the page's listener above.
+          if (e.key === "Escape") return true;
+          // Read-only (the menu is open), nothing is typing: Tab moves
+          // the focus on.
+          if (view.state.readOnly) return false;
+          // Alt+L (the physical L key: Option+L types a character on a Mac)
+          // cycles the Languages; it is not typing.
+          if (e.altKey && !e.ctrlKey && !e.metaKey && e.code === "KeyL") {
+            e.preventDefault();
+            onCycle();
+            return true;
+          }
+          const key = keyOf(e);
+          // timeStamp: when the key went down, on the page's monotonic
+          // clock, so the time between presses is exact to well under a
+          // millisecond however busy the page is afterwards.
+          if (key !== null) onKey(key, e.timeStamp);
+          return false;
+        },
+      })),
+      EditorView.updateListener.of((u) => {
+        if (u.docChanged && !programmatic) onChange(u.state.doc.toString());
+      }),
+    ],
   });
+  const view = new EditorView({ parent, state: freshState() });
+  // The mode of the state about to be shown is swapped in with it (the
+  // compartment is shared, so the extension is the only thing that differs).
+  const stateFor = (name) => freshState().update({ effects: language.switchTo(languageNamed(name)) }).state;
   view.focus();
   return {
     setDoc(text) {
@@ -150,8 +195,27 @@ function createEditor(parent, onChange, onEscape, onKey, languageName) {
     setReadOnly(readOnly) {
       view.dispatch({ effects: mode.reconfigure(editing(!readOnly)) });
     },
+    // Each Language's draft is a whole EditorState, so its cursor and undo
+    // history come back with it and Ctrl+Z never reaches into another
+    // Language's text.
     setLanguage(name) {
-      view.dispatch({ effects: language.switchTo(languageNamed(name)) });
+      if (!view.state.readOnly) {
+        const picked = languages.pick(name, view.state);
+        if (picked) {
+          programmatic = true;
+          try { view.setState(picked.draft ?? stateFor(picked.name)); }
+          finally { programmatic = false; }
+          view.focus();
+        }
+      }
+      return view.state.doc.toString();
+    },
+    nextLanguage: () => languages.next(),
+    reset() {
+      languages.reset();
+      programmatic = true;
+      try { view.setState(stateFor(languages.current)); }
+      finally { programmatic = false; }
     },
     focus() { view.focus(); },
   };
@@ -179,7 +243,10 @@ function loadRuns() {
 }
 
 window.TypeSolution = {
-  createEditor, saveRun, loadRuns,
+  createEditor, saveRun, loadRuns, initialLanguage,
+  // [[name, title], ...]: the Languages in the dropdown's order.
+  languages() { return languageList().map((l) => [l.name, l.title]); },
+  registerLanguage,
   createChecker(url, languageName) {
     return createCheckSession(languageNamed(languageName), { Worker, url });
   },

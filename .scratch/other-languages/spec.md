@@ -22,6 +22,7 @@ All of this is the same for every Language.
 **Choosing a Language**
 - A dropdown at the right edge of a thin bar directly under the editor (like VS Code's status bar picker). **Alt+L** cycles Languages from inside the editor. Tabs above the editor and a dropdown by the signature were rejected. ([ticket 05](issues/05-prototype-language-dropdown.md), prototype in `prototype-language-dropdown/`)
 - The choice is remembered in this browser; a new Puzzle opens in the last Language chosen. First visit, or an unknown saved value: JavaScript.
+  - **As built (ticket 29):** the bar's dropdown is built from the Language registry (`static/editor/src/languages.mjs`), so a Language added there appears with no other change. Each Language's draft is a whole editor state (text, cursor, undo history) kept in memory; a new Run (either menu button) drops every draft and keeps the Language. The `type-solution.language` key is read once at page load and written on every pick. The `?` is not built yet.
 - The bar also holds a hoverable `?` that shows the Reference Solution as a tooltip ([ADR 0001](../../docs/adr/0001-reference-solution-shown-on-hover.md)).
 
 **Drafts.** Each Language keeps its own draft during a Run; switching shows that Language's draft. An untouched Language opens empty (no pre-fill, not even the signature as code). Drafts live in memory only; a reload starts a fresh Run.

@@ -7,7 +7,6 @@ import Obelisk.Route.Frontend
 import Reflex.Dom
 
 import Common.Route
-import Frontend.Js (javascript)
 import Frontend.Run (runWidget)
 
 
@@ -31,4 +30,4 @@ frontendHead = do
 frontendBody :: ObeliskWidget t (R FrontendRoute) m => RoutedT t (R FrontendRoute) m ()
 frontendBody = elClass "main" "run" $
   prerender_ (el "p" $ text "Loading…") $
-    runWidget javascript (static @"js/runner.js")
+    runWidget (static @"js/runner.js")

@@ -129,6 +129,12 @@ type Millis = Double
 
 data Event
   = Edited UTCTime Text
+  | CodeSwapped Text
+    -- ^ The player picked another Language: the editor now shows that
+    -- Language's draft. Not an edit and not typing, so it never starts the
+    -- clock, and it does not reset it either (Design Contract L3). The last
+    -- check was of another Language's code, so its outcome goes and any
+    -- check in flight is stale.
   | Pressed Millis Key
   | CheckStarted Int
   | CheckFinished UTCTime Int Outcome
@@ -171,6 +177,14 @@ step e r = case (e, r.phase) of
   -- The editor is read-only while Paused; nothing typed counts.
   (Edited _ _, Paused) -> r
   (Pressed _ _, Paused) -> r
+  (CodeSwapped _, Paused) -> r
+  (CodeSwapped c, NotStarted) -> r { code = c }
+  (CodeSwapped c, _) -> r
+    { phase = Typing
+    , outcome = Nothing
+    , awaiting = Nothing
+    , code = c
+    }
   (Edited t c, _) -> r
     { phase = Typing
     , startedAt = r.startedAt <|> Just t

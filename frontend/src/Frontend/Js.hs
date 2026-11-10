@@ -7,13 +7,16 @@
 -- JSON text). Storage is reached only through the shim; nothing goes over
 -- the network.
 module Frontend.Js
-  ( Language
-  , javascript
+  ( Language (..)
+  , initialLanguage
+  , languages
   , Editor
   , createEditor
   , setDoc
   , setReadOnly
   , setLanguage
+  , nextLanguage
+  , resetEditor
   , focusEditor
   , focusElement
   , setHidden
@@ -40,18 +43,30 @@ import Common.Run (Key, Millis, keyFromChar)
 -- languages.mjs). The shim holds everything Language-specific: the editor's
 -- mode and the Checker.
 newtype Language = Language Text
+  deriving newtype (Eq)
 
-javascript :: Language
-javascript = Language "javascript"
+-- | The Language the page opens in: the one remembered in this browser, read
+-- once at page load, else JavaScript. A remembered Language that has a bundle
+-- starts downloading it here.
+initialLanguage :: JSM Language
+initialLanguage = Language <$> ((jsg ("TypeSolution" :: Text) # ("initialLanguage" :: Text) $ ()) >>= fromJSValUnchecked)
+
+-- | Every Language the shim knows, in the dropdown's order, with the title the
+-- player sees: @(name, title)@. The dropdown is built from this list.
+languages :: JSM [(Language, Text)]
+languages = do
+  pairs <- (jsg ("TypeSolution" :: Text) # ("languages" :: Text) $ ()) >>= fromJSValUnchecked
+  pure [ (Language n, t) | [n, t] <- pairs ]
 
 newtype Editor = Editor JSVal
 
 -- | Mount an editor in the element. The callbacks get the whole document on
 -- every change the player makes, the Escape key (pressed anywhere on the
--- page), and each key press a Run counts with its time. The Language gives
--- the editor its mode.
-createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Millis -> Key -> JSM ()) -> Language -> JSM Editor
-createEditor parent onChange onEscape onKey (Language name) = do
+-- page), each key press a Run counts with its time, and Alt+L (answer it
+-- with 'nextLanguage' and 'setLanguage'). It opens in the shim's current
+-- Language ('initialLanguage').
+createEditor :: Element -> (Text -> JSM ()) -> JSM () -> (Millis -> Key -> JSM ()) -> JSM () -> JSM Editor
+createEditor parent onChange onEscape onKey onCycle = do
   changed <- function \_ _ args -> forM_ (take 1 args) \a ->
     fromJSValUnchecked a >>= onChange
   escaped <- function \_ _ _ -> onEscape
@@ -65,15 +80,27 @@ createEditor parent onChange onEscape onKey (Language name) = do
         [c] -> onKey t (keyFromChar c)
         _ -> pure ()
     _ -> pure ()
-  Editor <$> (jsg ("TypeSolution" :: Text) # ("createEditor" :: Text) $ (unElement parent, changed, escaped, pressed, name))
+  cycled <- function \_ _ _ -> onCycle
+  Editor <$> (jsg ("TypeSolution" :: Text) # ("createEditor" :: Text) $ (unElement parent, changed, escaped, pressed, cycled))
 
 -- | Replace the document, without calling the change callback.
 setDoc :: Editor -> Text -> JSM ()
 setDoc (Editor e) t = void $ e # ("setDoc" :: Text) $ [t]
 
--- | Swap the editor's mode for the Language's; text and history stay.
-setLanguage :: Editor -> Language -> JSM ()
-setLanguage (Editor e) (Language name) = void $ e # ("setLanguage" :: Text) $ [name]
+-- | Pick a Language: the editor keeps the draft of the one it leaves, shows
+-- the picked one's (empty if never typed in), and the shim remembers the
+-- choice and starts the Language's bundle download the first time. Returns
+-- the text now shown. Nothing changes while the editor is read-only.
+setLanguage :: Editor -> Language -> JSM Text
+setLanguage (Editor e) (Language name) = (e # ("setLanguage" :: Text) $ [name]) >>= fromJSValUnchecked
+
+-- | The Language Alt+L would pick: the one after the current, wrapping round.
+nextLanguage :: Editor -> JSM Language
+nextLanguage (Editor e) = Language <$> ((e # ("nextLanguage" :: Text) $ ()) >>= fromJSValUnchecked)
+
+-- | A new Run: every Language's draft goes and the editor is empty.
+resetEditor :: Editor -> JSM ()
+resetEditor (Editor e) = void $ e # ("reset" :: Text) $ ()
 
 -- | Read-only: the editor takes no typing and Tab moves the focus on.
 setReadOnly :: Editor -> Bool -> JSM ()

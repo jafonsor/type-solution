@@ -179,6 +179,32 @@ suite = TestList
       r.phase @?= Checking
       r.outcome @?= Nothing
 
+  , "switching Language before typing doesn't start the clock" ~: do
+      let r = run [CodeSwapped "", CodeSwapped ""]
+      r.phase @?= NotStarted
+      r.startedAt @?= Nothing
+
+  , "switching Language doesn't reset the clock; the Run's code is the shown draft" ~: do
+      let r = run [Edited (at 1) "js", CodeSwapped "ps", CodeSwapped "", Edited (at 5) "ps2"]
+          swapped = run [Edited (at 1) "js", CodeSwapped "ps"]
+      r.startedAt @?= Just (at 1)
+      elapsed (at 6) r @?= 5
+      swapped.code @?= "ps"
+      swapped.phase @?= Typing
+
+  , "switching Language drops the last outcome and the check in flight" ~: do
+      let o = Results [failWith]
+          checked = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 o, CodeSwapped "x"]
+          inFlight = run [Edited (at 1) "", CheckStarted 1, CodeSwapped "x", CheckFinished (at 3) 1 allPass]
+      checked.outcome @?= Nothing
+      inFlight.phase @?= Typing
+      inFlight.outcome @?= Nothing
+
+  , "the Puzzle's table is found by Language name" ~: do
+      fmap (.signature) (languageTable "javascript" fizzBuzz) @?= Just fizzBuzz.javascript.signature
+      fmap (.signature) (languageTable "purescript" fizzBuzz) @?= Just fizzBuzz.purescript.signature
+      languageTable "klingon" fizzBuzz @?= Nothing
+
   , "editing drops the pending check" ~: do
       let r = run [Edited (at 1) "", CheckStarted 1, Edited (at 2) "", CheckFinished (at 3) 1 allPass]
       r.phase @?= Typing

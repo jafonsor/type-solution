@@ -10,10 +10,12 @@ module Frontend.Run
 import Control.Monad (forM_)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (liftIO)
+import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
+import Data.Map.Strict qualified as Map
 import Data.Text (Text)
 import Data.Text qualified as T
 import Data.Time (NominalDiffTime, getCurrentTime)
-import Language.Javascript.JSaddle (MonadJSM, liftJSM)
+import Language.Javascript.JSaddle (JSM, MonadJSM, liftJSM)
 import Reflex.Dom.Core
 
 import Common.Bank (randomPuzzle)
@@ -38,12 +40,16 @@ runWidget
      , MonadJSM m
      , MonadJSM (Performable m)
      )
-  => Language
-     -- ^ The current Language: the editor's mode and the Checker.
-  -> Text
-     -- ^ URL of the Language's test-runner worker script.
+  => Text
+     -- ^ URL of JavaScript's test-runner worker script. Each Language's
+     -- Checker is made the first time it's needed.
   -> m ()
-runWidget language workerUrl = mdo
+runWidget workerUrl = mdo
+  -- The Language the page opens in (the one remembered in this browser) and
+  -- the list the dropdown offers; both come from the shim's registry.
+  initial <- liftJSM initialLanguage
+  available <- liftJSM languages
+  dLanguage <- holdDyn initial eLanguage
   -- The first Puzzle is picked here, in the browser, so each visit differs.
   firstPuzzle <- liftJSM (randomPuzzle <$> random)
   dPuzzle <- holdDyn firstPuzzle ePuzzle
@@ -57,21 +63,47 @@ runWidget language workerUrl = mdo
   dHistoryBefore <- holdDyn (history stored) (tag (current dHistory) ePuzzle)
 
   elClass "header" "puzzle" do
-    elClass "h1" "signature" $ dynText ((.javascript.signature) <$> dPuzzle)
+    elClass "h1" "signature" $ dynText (signatureText <$> dLanguage <*> dPuzzle)
     elClass "p" "prompt" $ dynText ((.prompt) <$> dPuzzle)
 
   (box, _) <- elClass' "div" "editor" blank
   (eCode, fireCode) <- newTriggerEvent
+  (eCycle, fireCycle) <- newTriggerEvent
   (eEscape, fireEscape) <- newTriggerEvent
   (eReply, fireReply) <- newTriggerEvent
   (eKey, fireKey) <- newTriggerEvent
   editor <- liftJSM $ createEditor (_element_raw box)
-    (liftIO . fireCode) (liftIO (fireEscape ())) (\t k -> liftIO (fireKey (Pressed t k))) language
-  checker <- liftJSM (newChecker workerUrl language)
-  -- The editor is built before it's on the page, so it's focused once it
-  -- is: the player can start typing straight away.
-  eBuilt <- delay 0 =<< getPostBuild
-  performEvent_ (liftJSM (focusEditor editor) <$ eBuilt)
+    (liftIO . fireCode) (liftIO (fireEscape ())) (\t k -> liftIO (fireKey (Pressed t k)))
+    (liftIO (fireCycle ()))
+  -- One Checker per Language, made when first used and kept (it may hold a
+  -- worker); a check goes to the Checker of the Language it was typed in.
+  checkers <- liftIO (newIORef Map.empty)
+  let checkerFor l = cachedChecker checkers workerUrl l
+
+  -- The thin bar under the editor: the Language dropdown at its right edge.
+  -- Alt+L from the editor cycles it too.
+  eChosen <- elClass "div" "editor-bar" do
+    elClass "span" "hint" $ text "Alt+L"
+    d <- dropdown (languageName initial) (constDyn (Map.fromList [ (n, t) | (Language n, t) <- available ]))
+      DropdownConfig
+        { _dropdownConfig_setValue = languageName <$> eCycled
+        , _dropdownConfig_attributes = ffor dMenuOpen \open ->
+            "aria-label" =: "Language" <> (if open then "disabled" =: "" else mempty)
+        }
+    pure (Language <$> _dropdown_change d)
+
+  -- A pick, from the dropdown or Alt+L (not while the menu is open and the
+  -- editor read-only): the editor keeps the old draft and shows the new
+  -- Language's. The check in flight, which was of the old Language's code,
+  -- is stopped. The clock isn't touched.
+  eCycled <- performEvent $ liftJSM (nextLanguage editor) <$ gate (not . menuOpen <$> current dRun) eCycle
+  let eLanguage = gate (not . menuOpen <$> current dRun) (leftmost [eChosen, eCycled])
+      eChange = attachWithMaybe (\old new -> if old == new then Nothing else Just (old, new))
+        (current dLanguage) eLanguage
+  eSwitched <- performEvent $ ffor eChange \(old, new) -> liftJSM do
+    stopCheck =<< checkerFor old
+    draft <- setLanguage editor new
+    pure (new, draft)
 
   -- The editor is read-only while the menu is open, so edits come only
   -- while it's closed; the Run would ignore any others anyway.
@@ -80,23 +112,33 @@ runWidget language workerUrl = mdo
       underWay r = r.phase `notElem` [NotStarted, Skipped, Passed]
 
   -- Every edit stops the check in flight; a pause in typing starts a new one.
-  eEdited <- performEvent $ ffor eTyped \src -> do
-    liftJSM (stopCheck checker)
+  eEdited <- performEvent $ ffor (attach (current dLanguage) eTyped) \(l, src) -> do
+    liftJSM (stopCheck =<< checkerFor l)
     t <- liftIO getCurrentTime
     pure [Edited t src]
-  eQuiet <- debounce quietBeforeCheck eTyped
+  -- A check is for the Language its code was typed in: one still waiting
+  -- when the player switches Language is dropped (below). Landing on a draft
+  -- that has text starts one for that draft.
+  let eToCheck = leftmost
+        [ attachWith (,) (current dLanguage) eTyped
+        , fmapMaybe (\(l, draft) -> if T.null (T.strip draft) then Nothing else Just (l, draft)) eSwitched
+        ]
+  eQuiet <- debounce quietBeforeCheck eToCheck
   eCheck <- zipListWithEvent (,) [1 :: Int ..] $
-    attachWith (,) (current dPuzzle) (gate (underWay <$> current dRun) eQuiet)
+    attachWithMaybe
+      (\(p, current', r) (l, src) -> if l == current' && underWay r then Just (p, l, src) else Nothing)
+      ((,,) <$> current dPuzzle <*> current dLanguage <*> current dRun) eQuiet
 
   -- The Language's Checker does the rest: parsing, running, and its own
   -- timeouts. A newer check or an edit makes an older reply never arrive.
-  eStarted <- performEvent $ ffor eCheck \(n, (puzzle, src)) -> liftJSM do
-    startCheck checker (checkRequest puzzle src) \reply ->
-      liftIO (fireReply (n, reply))
+  eStarted <- performEvent $ ffor eCheck \(n, (puzzle, l, src)) -> liftJSM do
+    c <- checkerFor l
+    startCheck c (checkRequest puzzle src) \reply ->
+      liftIO (fireReply (n, l, reply))
     pure [CheckStarted n]
 
-  eFinished <- performEvent $ ffor eReply \(n, reply) -> do
-    liftJSM (stopCheck checker)
+  eFinished <- performEvent $ ffor eReply \(n, l, reply) -> do
+    liftJSM (stopCheck =<< checkerFor l)
     t <- liftIO getCurrentTime
     pure [CheckFinished t n (parseReply reply)]
 
@@ -107,15 +149,16 @@ runWidget language workerUrl = mdo
     pure [Escaped t]
 
   -- Either menu button starts a new Run with an empty editor.
-  ePuzzle <- performEvent $ ffor (attach (current dPuzzle) eChoice) \(p, choice) -> liftJSM do
-    stopCheck checker
-    setDoc editor ""
+  ePuzzle <- performEvent $ ffor (attach ((,) <$> current dPuzzle <*> current dLanguage) eChoice) \((p, l), choice) -> liftJSM do
+    stopCheck =<< checkerFor l
+    resetEditor editor
     case choice of
       Repeat -> pure p
       NewRandom -> randomPuzzle <$> random
 
   dRun <- foldDyn (\es r -> foldl (flip step) r es) newRun $ mergeWith (<>)
     [ eEdited, eStarted, eFinished, eEscaped
+    , (\(_, draft) -> [CodeSwapped draft]) <$> eSwitched
     , [NewRunStarted] <$ ePuzzle, (: []) <$> eKey ]
 
   -- A Run that has just passed is kept in the browser; one given up isn't.
@@ -167,6 +210,26 @@ weakKeyLine label dKeys describe = elClass "p" "weak-key-line" do
   dyn_ $ ffor dUniq \case
     [] -> elAttr "span" ("class" =: "none" <> "title" =: "Not enough typed yet") $ text "—"
     ks -> forM_ ks \(c, score) -> elAttr "kbd" ("title" =: describe score) $ text (T.singleton c)
+
+-- | The Puzzle's signature in the Language: the lines the player types
+-- first. Empty for a Language the Puzzle file format doesn't know.
+signatureText :: Language -> Puzzle -> Text
+signatureText l p = maybe "" (.signature) (languageTable (languageName l) p)
+
+-- | The Language's name, as the shim's registry and the Puzzle file know it.
+languageName :: Language -> Text
+languageName (Language n) = n
+
+-- | The Language's Checker, made on first use and then kept.
+cachedChecker :: IORef (Map.Map Text Checker) -> Text -> Language -> JSM Checker
+cachedChecker ref url l = do
+  known <- liftIO (Map.lookup (languageName l) <$> readIORef ref)
+  case known of
+    Just c -> pure c
+    Nothing -> do
+      c <- newChecker url l
+      liftIO (atomicModifyIORef' ref \m -> (Map.insert (languageName l) c m, ()))
+      pure c
 
 data Choice = NewRandom | Repeat
 
