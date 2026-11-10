@@ -48,6 +48,12 @@ records :: [Event] -> [RunRecord]
 records es = mapMaybe (uncurry (recordOnStep fizzBuzz)) (zip runs (drop 1 runs))
   where runs = scanl (flip step) newRun es
 
+-- | The two Languages the tests switch between. Only the names matter: the
+-- Run and the history treat every Language alike.
+js, ps :: Text
+js = "javascript"
+ps = "purescript"
+
 -- | A character whose time doesn't matter to the test.
 letter :: Key
 letter = Character 'x'
@@ -64,8 +70,8 @@ typing = [Pressed 0 letter, Edited (at 1) "x"]
 -- this many seconds.
 storedRun :: Text -> Double -> RunRecord
 storedRun i secs = RunRecord
-  { puzzleIdentity = i, finishedAt = t0, duration = secs, wpm = 40, backspaces = 1
-  , solution = "", keyPresses = [] }
+  { puzzleIdentity = i, language = js, finishedAt = t0, duration = secs, wpm = 40, backspaces = 1
+  , peeked = False, solution = "", keyPresses = [], keyLanguages = [] }
 
 -- | A stored record whose key presses are these characters (as 'keyChar'
 -- writes them, so @\b@ is a Backspace), each with its milliseconds since the
@@ -89,7 +95,7 @@ gapsOf ps = keyed (('_', 0) : ps)
 
 -- | A Run on fizzBuzz passed in this many seconds, with one word typed.
 passedIn :: Double -> Run
-passedIn secs = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1, CheckFinished (at secs) 1 allPass]
+passedIn secs = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1 js, CheckFinished (at secs) 1 allPass]
 
 pass, failWith :: TestResult
 pass = TestResult { passed = True, got = "\"x\"" }
@@ -164,41 +170,99 @@ suite = TestList
       elapsed (at 4) r @?= 3
 
   , "an outcome where every test passes ends the Run and stops the clock" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2.5) 1 allPass]
+      let r = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2.5) 1 allPass]
       r.phase @?= Passed
       elapsed (at 10) r @?= 1.5
 
   , "a failing outcome is kept to show why" ~: do
       let o = Results [failWith]
-          r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 o]
+          r = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 o]
       r.phase @?= Checked
       r.outcome @?= Just o
 
   , "an outcome for a check that was superseded is ignored" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, CheckStarted 2, CheckFinished (at 2) 1 allPass]
+      let r = run [Edited (at 1) "", CheckStarted 1 js, CheckStarted 2 js, CheckFinished (at 2) 1 allPass]
       r.phase @?= Checking
       r.outcome @?= Nothing
 
   , "switching Language before typing doesn't start the clock" ~: do
-      let r = run [CodeSwapped "", CodeSwapped ""]
+      let r = run [CodeSwapped ps "", CodeSwapped js ""]
       r.phase @?= NotStarted
       r.startedAt @?= Nothing
 
   , "switching Language doesn't reset the clock; the Run's code is the shown draft" ~: do
-      let r = run [Edited (at 1) "js", CodeSwapped "ps", CodeSwapped "", Edited (at 5) "ps2"]
-          swapped = run [Edited (at 1) "js", CodeSwapped "ps"]
+      let r = run [Edited (at 1) "js", CodeSwapped ps "", CodeSwapped js "js", Edited (at 5) "js2"]
+          swapped = run [Edited (at 1) "js", CodeSwapped ps "ps"]
       r.startedAt @?= Just (at 1)
       elapsed (at 6) r @?= 5
       swapped.code @?= "ps"
+      swapped.shown @?= ps
       swapped.phase @?= Typing
+      -- Each Language keeps its text for a check of it later.
+      (draftOf js swapped, draftOf ps swapped, draftOf "other" swapped) @?= ("js", "ps", "")
 
-  , "switching Language drops the last outcome and the check in flight" ~: do
+  , "switching Language drops the last outcome" ~: do
       let o = Results [failWith]
-          checked = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 o, CodeSwapped "x"]
-          inFlight = run [Edited (at 1) "", CheckStarted 1, CodeSwapped "x", CheckFinished (at 3) 1 allPass]
+          checked = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 o, CodeSwapped ps "x"]
       checked.outcome @?= Nothing
-      inFlight.phase @?= Typing
-      inFlight.outcome @?= Nothing
+      checked.phase @?= Typing
+
+  -- L3: one Run, many Languages. Whichever Solution passes first ends the Run.
+
+  , "a check in flight for the Language left still ends the Run when it passes, with that Language's Solution" ~: do
+      let r = run [ Pressed 0 letter, Edited (at 1) "jsCode", CheckStarted 1 js
+                  , CodeSwapped ps "", Pressed 100 (Character 'p'), Edited (at 2) "psCode"
+                  , CheckFinished (at 3) 1 allPass ]
+      r.phase @?= Passed
+      r.passedBy @?= Just js
+      r.code @?= "jsCode"
+      -- The time is the whole Run's, from the first keystroke.
+      elapsed (at 9) r @?= 2
+      fmap (\rr -> (rr.language, rr.solution, rr.duration)) (runRecord fizzBuzz r) @?= Just (js, "jsCode", 2)
+
+  , "a check that begins after the switch, of the Language left, counts too" ~: do
+      -- The check starts 400 ms after the last edit, whichever Language is shown by then.
+      let r = run [ Edited (at 1) "jsCode", CodeSwapped ps "", Edited (at 2) "psCode"
+                  , CheckStarted 1 js, CheckFinished (at 3) 1 allPass ]
+      r.phase @?= Passed
+      r.code @?= "jsCode"
+      (run [Edited (at 1) "jsCode", CodeSwapped ps "", Edited (at 2) "psCode", CheckStarted 1 js]).phase @?= Typing
+
+  , "the other Language passing first ends the Run in that Language; the later one is ignored" ~: do
+      let r = run [ Edited (at 1) "jsCode", CheckStarted 1 js, CodeSwapped ps "", Edited (at 2) "psCode"
+                  , CheckStarted 2 ps, CheckFinished (at 3) 2 allPass, CheckFinished (at 4) 1 allPass ]
+      r.passedBy @?= Just ps
+      r.code @?= "psCode"
+      elapsed (at 9) r @?= 2
+
+  , "a failure of the Language left tells nothing about the shown draft" ~: do
+      let o = Results [failWith]
+          r = run [ Edited (at 1) "jsCode", CheckStarted 1 js, CodeSwapped ps "", Edited (at 2) "psCode"
+                  , CheckStarted 2 ps, CheckFinished (at 3) 1 o ]
+      r.phase @?= Checking
+      r.outcome @?= Nothing
+      -- And the shown Language's own check still counts afterwards.
+      (step (CheckFinished (at 4) 2 allPass) r).passedBy @?= Just ps
+
+  , "an edit drops only the check of the Language edited" ~: do
+      let es = [ Edited (at 1) "jsCode", CheckStarted 1 js, CodeSwapped ps "", Edited (at 2) "psCode"
+               , CheckStarted 2 ps, Edited (at 3) "psCode2" ]
+      (run (es <> [CheckFinished (at 4) 1 allPass])).passedBy @?= Just js
+      (run (es <> [CheckFinished (at 4) 2 allPass])).phase @?= Typing
+      -- Back in JavaScript, an edit drops its check.
+      (run (es <> [CodeSwapped js "jsCode", Edited (at 4) "jsCode2", CheckFinished (at 5) 1 allPass])).phase @?= Typing
+
+  , "switching back to a Language whose check is still in flight shows its outcome when it arrives" ~: do
+      let o = Results [failWith]
+          r = run [ Edited (at 1) "jsCode", CheckStarted 1 js, CodeSwapped ps "", CodeSwapped js "jsCode"
+                  , CheckFinished (at 2) 1 o ]
+      r.phase @?= Checked
+      r.outcome @?= Just o
+
+  , "a Language switch during a Pause does nothing" ~: do
+      let r = run (typing <> [Escaped (at 2), CodeSwapped ps "y"])
+      r.shown @?= js
+      r.code @?= "x"
 
   , "the Puzzle's table is found by Language name" ~: do
       fmap (.signature) (languageTable "javascript" fizzBuzz) @?= Just fizzBuzz.javascript.signature
@@ -206,41 +270,41 @@ suite = TestList
       languageTable "klingon" fizzBuzz @?= Nothing
 
   , "editing drops the pending check" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, Edited (at 2) "", CheckFinished (at 3) 1 allPass]
+      let r = run [Edited (at 1) "", CheckStarted 1 js, Edited (at 2) "", CheckFinished (at 3) 1 allPass]
       r.phase @?= Typing
       r.outcome @?= Nothing
 
   , "the last outcome stays visible while typing again" ~: do
       let o = SyntaxError "Unexpected token"
-          r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 o, Edited (at 3) ""]
+          r = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 o, Edited (at 3) ""]
       r.phase @?= Typing
       r.outcome @?= Just o
 
   , "a timeout is a failed check" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 (TimedOut "Stopped")]
+      let r = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 (TimedOut "Stopped")]
       r.phase @?= Checked
       r.outcome @?= Just (TimedOut "Stopped")
 
   , "no results is not a pass" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 (Results [])]
+      let r = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 (Results [])]
       r.phase @?= Checked
 
   , "a passed Run ignores further edits and checks" ~: do
-      let r = run [ Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 allPass
-                  , Edited (at 3) "", CheckStarted 2, CheckFinished (at 4) 2 (Results [failWith]) ]
+      let r = run [ Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 allPass
+                  , Edited (at 3) "", CheckStarted 2 js, CheckFinished (at 4) 2 (Results [failWith]) ]
       r.phase @?= Passed
       elapsed (at 9) r @?= 1
 
   , "a new Run after a pass starts from scratch" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, CheckFinished (at 2) 1 allPass, NewRunStarted]
+      let r = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 allPass, NewRunStarted]
       r @?= newRun
 
   , "an outcome arriving after a new Run started is ignored" ~: do
-      let r = run [Edited (at 1) "", CheckStarted 1, Escaped (at 1.5), NewRunStarted, CheckFinished (at 2) 1 allPass]
+      let r = run [Edited (at 1) "", CheckStarted 1 js, Escaped (at 1.5), NewRunStarted, CheckFinished (at 2) 1 allPass]
       r @?= newRun
 
   , "a check left over from a dropped Run doesn't start the new one" ~: do
-      let r = run [Edited (at 1) "", Escaped (at 1.2), NewRunStarted, CheckStarted 1]
+      let r = run [Edited (at 1) "", Escaped (at 1.2), NewRunStarted, CheckStarted 1 js]
       r @?= newRun
 
   -- Esc
@@ -252,7 +316,7 @@ suite = TestList
       elapsed (at 5) r @?= 0
 
   , "after a skip, Esc and typing do nothing" ~: do
-      let r = run [Escaped (at 1), Escaped (at 2), Pressed 0 letter, Edited (at 3) "x", CheckStarted 1]
+      let r = run [Escaped (at 1), Escaped (at 2), Pressed 0 letter, Edited (at 3) "x", CheckStarted 1 js]
       r @?= run [Escaped (at 1)]
 
   , "Esc while typing pauses the Run and stops the clock" ~: do
@@ -263,12 +327,12 @@ suite = TestList
       elapsed (at 60) r @?= 3
 
   , "Esc while a check runs pauses the Run" ~: do
-      let r = run (typing <> [CheckStarted 1, Escaped (at 2)])
+      let r = run (typing <> [CheckStarted 1 js, Escaped (at 2)])
       r.phase @?= Paused
 
   , "Esc after a failed check pauses the Run and keeps the feedback" ~: do
       let o = Results [failWith]
-          r = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o, Escaped (at 3)])
+          r = run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 o, Escaped (at 3)])
       r.phase @?= Paused
       r.outcome @?= Just o
 
@@ -277,10 +341,10 @@ suite = TestList
       r.phase @?= Typing
       elapsed (at 10) r @?= 3
       elapsed (at 12) r @?= 5
-      let c = run (typing <> [CheckStarted 1, Escaped (at 2), Escaped (at 3)])
+      let c = run (typing <> [CheckStarted 1 js, Escaped (at 2), Escaped (at 3)])
       c.phase @?= Checking
       let o = SyntaxError "Unexpected token"
-          f = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o, Escaped (at 3), Escaped (at 4)])
+          f = run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 o, Escaped (at 3), Escaped (at 4)])
       (f.phase, statusOf f) @?= (Checked, "doesn't parse yet")
 
   , "edits and key presses are ignored while paused" ~: do
@@ -290,15 +354,15 @@ suite = TestList
       r.code @?= "x"
 
   , "Esc after a pass does nothing" ~: do
-      let done = run (typing <> [CheckStarted 1, CheckFinished (at 3) 1 allPass])
-          r = run (typing <> [CheckStarted 1, CheckFinished (at 3) 1 allPass, Escaped (at 4)])
+      let done = run (typing <> [CheckStarted 1 js, CheckFinished (at 3) 1 allPass])
+          r = run (typing <> [CheckStarted 1 js, CheckFinished (at 3) 1 allPass, Escaped (at 4)])
       r @?= done
 
   , "paused time is left out of the Run's time and words per minute" ~: do
       let keys5 = concat (replicate 5 [Pressed 0 letter, Pressed 0 Space])
           r = run ( [Edited (at 0) "f"] <> keys5
                   <> [Escaped (at 10), Escaped (at 25), Escaped (at 30), Escaped (at 40)]
-                  <> [CheckStarted 1, CheckFinished (at 45) 1 allPass] )
+                  <> [CheckStarted 1 js, CheckFinished (at 45) 1 allPass] )
       -- 45 s on the clock, 15 + 10 of them paused.
       elapsed (at 99) r @?= 20
       wordsPerMinute r @?= Just 15
@@ -306,19 +370,19 @@ suite = TestList
       statusOf r @?= "Passed in 20.0 s, 15 wpm, 0 backspaces. First time on this Puzzle."
 
   , "a check passing during a Pause ends the Run when the Pause began" ~: do
-      let r = run (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 allPass])
+      let r = run (typing <> [CheckStarted 1 js, Escaped (at 3), CheckFinished (at 3.5) 1 allPass])
       r.phase @?= Passed
       r.finishedAt @?= Just (at 3)
       elapsed (at 99) r @?= 2
-      map (.duration) (records (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 allPass])) @?= [2]
+      map (.duration) (records (typing <> [CheckStarted 1 js, Escaped (at 3), CheckFinished (at 3.5) 1 allPass])) @?= [2]
 
   , "after an earlier Pause, a pass during a Pause still leaves out all paused time" ~: do
-      let r = run (typing <> [Escaped (at 2), Escaped (at 7), CheckStarted 1, Escaped (at 8), CheckFinished (at 9) 1 allPass])
+      let r = run (typing <> [Escaped (at 2), Escaped (at 7), CheckStarted 1 js, Escaped (at 8), CheckFinished (at 9) 1 allPass])
       elapsed (at 99) r @?= 2
 
   , "a check failing during a Pause shows its feedback and stays paused" ~: do
       let o = Results [pass, failWith]
-          r = run (typing <> [CheckStarted 1, Escaped (at 3), CheckFinished (at 3.5) 1 o])
+          r = run (typing <> [CheckStarted 1 js, Escaped (at 3), CheckFinished (at 3.5) 1 o])
       r.phase @?= Paused
       r.outcome @?= Just o
       statusOf r @?= "Paused. Esc to carry on."
@@ -326,17 +390,17 @@ suite = TestList
       (resumed.phase, statusOf resumed) @?= (Checked, "1/2 tests pass")
 
   , "a check that starts during a Pause counts too" ~: do
-      let r = run (typing <> [Escaped (at 2), CheckStarted 1, CheckFinished (at 2.5) 1 allPass])
+      let r = run (typing <> [Escaped (at 2), CheckStarted 1 js, CheckFinished (at 2.5) 1 allPass])
       (r.phase, r.finishedAt) @?= (Passed, Just (at 2))
 
   , "the menu is open exactly after a pass, during a Pause and after a skip" ~: do
-      let toPass = typing <> [CheckStarted 1, CheckFinished (at 2) 1 allPass]
+      let toPass = typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 allPass]
           phases :: [(Phase, Bool)]
           phases =
             [ (newRun.phase, menuOpen newRun)
             , let r = run typing in (r.phase, menuOpen r)
-            , let r = run (typing <> [CheckStarted 1]) in (r.phase, menuOpen r)
-            , let r = run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 (TimedOut "Stopped")]) in (r.phase, menuOpen r)
+            , let r = run (typing <> [CheckStarted 1 js]) in (r.phase, menuOpen r)
+            , let r = run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 (TimedOut "Stopped")]) in (r.phase, menuOpen r)
             , let r = run (typing <> [Escaped (at 2)]) in (r.phase, menuOpen r)
             , let r = run [Escaped (at 1)] in (r.phase, menuOpen r)
             , let r = run toPass in (r.phase, menuOpen r)
@@ -347,12 +411,12 @@ suite = TestList
         , (Paused, True), (Skipped, True), (Passed, True), (NotStarted, False) ]
 
   , "a Run given up from a Pause leaves no record" ~: do
-      let es = typing <> [Pressed 0 Space, CheckStarted 1, Escaped (at 3), NewRunStarted, CheckFinished (at 3.5) 1 allPass]
+      let es = typing <> [Pressed 0 Space, CheckStarted 1 js, Escaped (at 3), NewRunStarted, CheckFinished (at 3.5) 1 allPass]
       records es @?= []
       run es @?= newRun
 
   , "a passed Run leaves exactly one record, and a new Run after it none" ~: do
-      let es = typing <> [CheckStarted 1, CheckFinished (at 3) 1 allPass, Escaped (at 4), NewRunStarted]
+      let es = typing <> [CheckStarted 1 js, CheckFinished (at 3) 1 allPass, Escaped (at 4), NewRunStarted]
       map (.duration) (records es) @?= [2]
 
   -- The status line
@@ -360,8 +424,8 @@ suite = TestList
   , "the status line says what the Run is doing" ~: do
       statusOf newRun @?= "Start typing: the clock starts on your first keystroke."
       statusOf (run typing) @?= ""
-      statusOf (run (typing <> [CheckStarted 1])) @?= "checking…"
-      let after o = statusOf (run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 o]))
+      statusOf (run (typing <> [CheckStarted 1 js])) @?= "checking…"
+      let after o = statusOf (run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 o]))
       after (Results [pass, failWith, failWith]) @?= "1/3 tests pass"
       after (SyntaxError "x") @?= "doesn't parse yet"
       after (Crashed "x") @?= "crashed"
@@ -369,9 +433,9 @@ suite = TestList
 
   , "the pass line gives the time, words per minute and backspaces, and no Esc hint" ~: do
       let r = run [ Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, Pressed 0 Backspace
-                  , CheckStarted 1, CheckFinished (at 12.34) 1 allPass ]
+                  , CheckStarted 1 js, CheckFinished (at 12.34) 1 allPass ]
       statusOf r @?= "Passed in 12.3 s, 5 wpm, 1 backspace. First time on this Puzzle."
-      let r2 = run [ Edited (at 0) "f", Pressed 0 Backspace, Pressed 0 Backspace, CheckStarted 1, CheckFinished (at 6) 1 allPass ]
+      let r2 = run [ Edited (at 0) "f", Pressed 0 Backspace, Pressed 0 Backspace, CheckStarted 1 js, CheckFinished (at 6) 1 allPass ]
       statusOf r2 @?= "Passed in 6.0 s, 0 wpm, 2 backspaces. First time on this Puzzle."
 
   , "times read in seconds to a tenth" ~: do
@@ -384,15 +448,15 @@ suite = TestList
   , "the Personal best is the fastest passed Run on the Puzzle, its words per minute and backspaces with it" ~: do
       let best = (storedRun "fizzBuzz" 12.3) { wpm = 42, backspaces = 3 }
           h = history [storedRun "fizzBuzz" 14, storedRun "other" 5, best, storedRun "fizzBuzz" 15.1]
-      personalBest "fizzBuzz" h @?= Just best
-      personalBest "nothingPassed" h @?= Nothing
+      personalBest js "fizzBuzz" h @?= Just best
+      personalBest js "nothingPassed" h @?= Nothing
       -- Of two equally fast, the earlier.
       let first = (storedRun "fizzBuzz" 9) { wpm = 1 }
-      fmap (.wpm) (personalBest "fizzBuzz" (history [first, (storedRun "fizzBuzz" 9) { wpm = 2 }])) @?= Just 1
+      fmap (.wpm) (personalBest js "fizzBuzz" (history [first, (storedRun "fizzBuzz" 9) { wpm = 2 }])) @?= Just 1
 
   , "other Puzzles' Runs are ignored" ~: do
       let h = history [storedRun "other" 1, storedRun "fizzBuzzAgain" 2]
-      personalBest "fizzBuzz" h @?= Nothing
+      personalBest js "fizzBuzz" h @?= Nothing
       statusText fizzBuzz h (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. First time on this Puzzle."
 
   , "a pass with no earlier pass on the Puzzle is the first time" ~: do
@@ -417,13 +481,13 @@ suite = TestList
 
   , "the best is never shown during a Run" ~: do
       let h = history [storedRun "fizzBuzz" 1]
-          during = [ newRun, run typing, run (typing <> [CheckStarted 1])
-                   , run (typing <> [CheckStarted 1, CheckFinished (at 2) 1 (TimedOut "Stopped")])
+          during = [ newRun, run typing, run (typing <> [CheckStarted 1 js])
+                   , run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 (TimedOut "Stopped")])
                    , run (typing <> [Escaped (at 2)]), run [Escaped (at 1)] ]
       map (statusText fizzBuzz h) during @?= map statusOf during
 
   , "a passed Run's record, once added, is what the next Run compares with" ~: do
-      let pass1 = [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1, CheckFinished (at 14) 1 allPass]
+      let pass1 = [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1 js, CheckFinished (at 14) 1 allPass]
           h = foldr addRecord (history []) (records pass1)
       statusText fizzBuzz h (passedIn 15.1) @?= "Passed in 15.1 s, 4 wpm, 0 backspaces. Best: 14.0 s."
       statusText fizzBuzz h (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. New best (was 14.0 s)."
@@ -435,86 +499,86 @@ suite = TestList
 
   , "a character typed straight after one or two Backspaces is a Correction; after three or more it isn't" ~: do
       let h = history [typedRecord ("a\bb" <> "a\b\bc" <> "a\b\b\bd" <> "a\b\b\b\be" <> "\bf" <> tenOf "abcdef")]
-      mostMissed h @?= [('b', 1), ('c', 1), ('f', 1)]
+      mostMissed js h @?= [('b', 1), ('c', 1), ('f', 1)]
       -- Only the character straight after counts, and the run starts again after it.
-      mostMissed (history [typedRecord ("x\bgg\bg" <> tenOf "g")]) @?= [('g', 2)]
+      mostMissed js (history [typedRecord ("x\bgg\bg" <> tenOf "g")]) @?= [('g', 2)]
 
   , "Most missed counts every Correction over the Runs, most first" ~: do
       let h = history [ typedRecord ("x\b;x\b;x\b;" <> tenOf ";'"), typedRecord "x\b;x\b'" ]
-      mostMissed h @?= [(';', 4), ('\'', 1)]
+      mostMissed js h @?= [(';', 4), ('\'', 1)]
 
   , "Hesitation is the time since the previous press; a character's score is its median" ~: do
       -- An odd count: the middle one.
-      slowest (history [gapsOf [('m', g) | g <- [100, 200 .. 1100]]]) @?= [('m', 600)]
+      slowest js (history [gapsOf [('m', g) | g <- [100, 200 .. 1100]]]) @?= [('m', 600)]
       -- An even count: the mean of the two middle ones.
-      slowest (history [gapsOf [('m', g) | g <- [100, 200 .. 1000]]]) @?= [('m', 550)]
+      slowest js (history [gapsOf [('m', g) | g <- [100, 200 .. 1000]]]) @?= [('m', 550)]
       -- Typed straight after a Backspace still counts (left out, the median would be 1000).
-      slowest (history [gapsOf ([('n', 1000) | _ <- [1 .. 5 :: Int]] <> [('n', 100) | _ <- [1 .. 4 :: Int]] <> [('\b', 100), ('n', 100)])]) @?= [('n', 550)]
+      slowest js (history [gapsOf ([('n', 1000) | _ <- [1 .. 5 :: Int]] <> [('n', 100) | _ <- [1 .. 4 :: Int]] <> [('\b', 100), ('n', 100)])]) @?= [('n', 550)]
 
   , "Hesitation leaves out gaps over 1.5 s" ~: do
       let h = history [gapsOf ([('e', 1501) | _ <- [1 .. 6 :: Int]] <> [('e', 50) | _ <- [1 .. 4 :: Int]] <> [('w', 1500) | _ <- [1 .. 10 :: Int]])]
-      slowest h @?= [('w', 1500), ('e', 50)]
+      slowest js h @?= [('w', 1500), ('e', 50)]
       -- Every gap too long: nothing to score, though typed ten times.
-      slowest (history [gapsOf [('e', 1600) | _ <- [1 .. 10 :: Int]]]) @?= []
+      slowest js (history [gapsOf [('e', 1600) | _ <- [1 .. 10 :: Int]]]) @?= []
 
   , "Hesitation leaves out each Run's first press" ~: do
-      -- Each Run starts on a slow 'r'; counted, they'd make 'r' the slowest (705 ms).
+      -- Each Run starts on a slow 'r'; counted, they'd make 'r' the slowest js (705 ms).
       let runOf = keyed [('r', 1400), ('r', 10), ('s', 100), ('s', 100)]
-      slowest (history (replicate 5 runOf)) @?= [('s', 100), ('r', 10)]
+      slowest js (history (replicate 5 runOf)) @?= [('s', 100), ('r', 10)]
 
   , "the lists use only the last 20 Runs" ~: do
       let oldest = typedRecord (concat (replicate 10 "z\bz") <> "a\ba")
           rest = replicate 20 (typedRecord "a\ba")
-      mostMissed (history (oldest : rest)) @?= [('a', 20)]
-      mostMissed (history (oldest : drop 1 rest)) @?= [('a', 20), ('z', 10)]
+      mostMissed js (history (oldest : rest)) @?= [('a', 20)]
+      mostMissed js (history (oldest : drop 1 rest)) @?= [('a', 20), ('z', 10)]
       let slowOld = keyed (('_', 0) : [('y', 900) | _ <- [1 .. 10 :: Int]])
           quick = keyed [('_', 0), ('z', 100)]
-      slowest (history (slowOld : replicate 20 quick)) @?= [('z', 100)]
+      slowest js (history (slowOld : replicate 20 quick)) @?= [('z', 100)]
 
   , "records without key presses are skipped and don't use up one of the 20" ~: do
       let oldest = typedRecord (concat (replicate 10 "z\bz") <> "a\ba")
           rest = replicate 19 (typedRecord "a\ba")
           bare = storedRun "fizzBuzz" 5
           h = history ([oldest] <> rest <> replicate 5 bare)
-      mostMissed h @?= [('a', 20), ('z', 10)]
+      mostMissed js h @?= [('a', 20), ('z', 10)]
       -- They still give bests.
-      fmap (.duration) (personalBest "fizzBuzz" h) @?= Just 5
-      mostMissed (history (replicate 3 bare)) @?= []
+      fmap (.duration) (personalBest js "fizzBuzz" h) @?= Just 5
+      mostMissed js (history (replicate 3 bare)) @?= []
 
   , "a character appears only once typed at least 10 times in those Runs" ~: do
       let h = history [typedRecord ("x\bk" <> replicate 8 'k' <> "x\bq" <> replicate 9 'q')]
-      mostMissed h @?= [('q', 1)]
-      slowest h @?= [('q', 100)]
+      mostMissed js h @?= [('q', 1)]
+      slowest js h @?= [('q', 100)]
       -- Counted over all the Runs together.
-      mostMissed (history [typedRecord ("x\bk" <> replicate 4 'k'), typedRecord "kkkkk"]) @?= [('k', 1)]
+      mostMissed js (history [typedRecord ("x\bk" <> replicate 4 'k'), typedRecord "kkkkk"]) @?= [('k', 1)]
 
   , "Space, Enter, Tab and Backspace never appear" ~: do
       let h = history [keyed (('_', 0) : concat (replicate 10 [('x', 50), ('\b', 1400), (' ', 1400), ('\b', 1400), ('\n', 1400), ('\b', 1400), ('\t', 1400)]))]
-      mostMissed h @?= []
-      slowest h @?= [('x', 50)]
+      mostMissed js h @?= []
+      slowest js h @?= [('x', 50)]
 
   , "A and a stay apart" ~: do
       let h = history [keyed (('_', 0) : concat (replicate 10 [('a', 100), ('\b', 100), ('A', 900)]))]
-      mostMissed h @?= [('A', 10)]
-      slowest h @?= [('A', 900), ('a', 100)]
+      mostMissed js h @?= [('A', 10)]
+      slowest js h @?= [('A', 900), ('a', 100)]
 
   , "each list shows at most five characters, worst first, ties by character" ~: do
       let missed = concat [concat (replicate n ['x', '\b', c]) | (c, n) <- [('.', 3), (',', 3), ('{', 7), ('`', 1), ('"', 2), ('(', 5), (')', 4 :: Int)]]
           h = history [typedRecord (missed <> tenOf ".,{`\"()")]
-      mostMissed h @?= [('{', 7), ('(', 5), (')', 4), (',', 3), ('.', 3)]
+      mostMissed js h @?= [('{', 7), ('(', 5), (')', 4), (',', 3), ('.', 3)]
       let gaps = [(c, g) | (c, g) <- [('.', 300), (',', 300), ('{', 700), ('`', 100), ('"', 200), ('(', 500), (')', 400)], _ <- [1 .. 10 :: Int]]
-      slowest (history [gapsOf gaps]) @?= [('{', 700), ('(', 500), (')', 400), (',', 300), ('.', 300)]
+      slowest js (history [gapsOf gaps]) @?= [('{', 700), ('(', 500), (')', 400), (',', 300), ('.', 300)]
 
   , "both lists are empty until some character has enough data" ~: do
-      mostMissed (history []) @?= []
-      slowest (history []) @?= []
+      mostMissed js (history []) @?= []
+      slowest js (history []) @?= []
       let h = history [typedRecord "f\bfunction"]
-      (mostMissed h, slowest h) @?= ([], [])
+      (mostMissed js h, slowest js h) @?= ([], [])
 
   , "a newly added record counts straight away" ~: do
       let h = history [typedRecord (tenOf ";")]
-      mostMissed h @?= []
-      mostMissed (addRecord (typedRecord "x\b;") h) @?= [(';', 1)]
+      mostMissed js h @?= []
+      mostMissed js (addRecord (typedRecord "x\b;") h) @?= [(';', 1)]
 
   , "stored records decode one by one: old, stripped and full records read, a broken one is skipped" ~: do
       let old = "{\"puzzle\":\"fizzBuzz\",\"finishedAt\":\"2026-10-17T21:14:03.512Z\",\"seconds\":99.9,\"wordsPerMinute\":10,\"backspaces\":0,\"solution\":\"x\"}"
@@ -524,56 +588,56 @@ suite = TestList
           rs = decodeRecords ("[" <> T.intercalate "," [old, "5", full, "{\"puzzle\":\"fizzBuzz\"}", stripped, "null", badKeys, "\"junk\""] <> "]")
       map (\r -> (r.puzzleIdentity, r.duration, length r.keyPresses)) rs
         @?= [("fizzBuzz", 99.9, 0), ("other", 4, 2), ("fizzBuzz", 12.5, 0)]
-      fmap (.duration) (personalBest "fizzBuzz" (history rs)) @?= Just 12.5
+      fmap (.duration) (personalBest js "fizzBuzz" (history rs)) @?= Just 12.5
       decodeRecords "[]" @?= []
       decodeRecords "not json" @?= []
       decodeRecords "{\"puzzle\":\"fizzBuzz\"}" @?= []
 
   , "a space or Enter straight after a character ends a word" ~: do
       let r = run (map (Pressed 0) [letter, Space, Space, letter, letter, Enter, Enter, letter])
-      r.wordsTyped @?= 2
+      scoredWords r @?= 2
 
   , "a space after a backspace doesn't end a word" ~: do
       let r = run (map (Pressed 0) [letter, Backspace, Space])
-      r.wordsTyped @?= 0
+      scoredWords r @?= 0
 
   , "backspaces are counted" ~: do
       let r = run (map (Pressed 0) [letter, Backspace, Backspace, letter])
-      r.backspaces @?= 2
+      scoredBackspaces r @?= 2
 
   , "key presses after passing don't count" ~: do
-      let r = run [ Pressed 0 letter, Edited (at 1) "x", CheckStarted 1, CheckFinished (at 2) 1 allPass
+      let r = run [ Pressed 0 letter, Edited (at 1) "x", CheckStarted 1 js, CheckFinished (at 2) 1 allPass
                   , Pressed 0 Space, Pressed 0 Backspace ]
-      (r.wordsTyped, r.backspaces) @?= (0, 0)
+      (scoredWords r, scoredBackspaces r) @?= (0, 0)
 
   , "the Run keeps every key press, in order, with the milliseconds since the one before" ~: do
       let es = [ press 1000.4 (Character 'f'), Edited (at 1) "f", press 1120.4 (Character 'n')
                , press 1200 Backspace, press 1295.6 (Character 'u'), press 1400 Space
                , press 1450 Enter, press 1500 Tab
-               , CheckStarted 1, CheckFinished (at 3) 1 allPass ]
+               , CheckStarted 1 js, CheckFinished (at 3) 1 allPass ]
       map (\kp -> (kp.key, kp.sincePrevious)) (concatMap (.keyPresses) (records es)) @?=
         [ (Character 'f', 0), (Character 'n', 120), (Backspace, 80), (Character 'u', 96)
         , (Space, 104), (Enter, 50), (Tab, 50) ]
       -- Counting is as before.
       let r = run es
-      (r.wordsTyped, r.backspaces) @?= (1, 1)
+      (scoredWords r, scoredBackspaces r) @?= (1, 1)
 
   , "A and a are kept as different characters" ~: do
-      let es = [press 0 (Character 'A'), Edited (at 1) "A", press 90 (Character 'a'), CheckStarted 1, CheckFinished (at 2) 1 allPass]
+      let es = [press 0 (Character 'A'), Edited (at 1) "A", press 90 (Character 'a'), CheckStarted 1 js, CheckFinished (at 2) 1 allPass]
       map (.key) (concatMap (.keyPresses) (records es)) @?= [Character 'A', Character 'a']
 
   , "only a Space or Enter straight after a character ends a word; Tab never does" ~: do
       let r = run (map (Pressed 0) [Character 'a', Tab, Space, Character '{', Enter, Character '1', Tab])
-      r.wordsTyped @?= 1
+      scoredWords r @?= 1
 
   , "key presses while paused, after a skip or after a pass aren't kept" ~: do
       let toPause = [press 0 (Character 'a'), Edited (at 1) "a", Escaped (at 2)]
           es = toPause <> [press 50 (Character 'b'), Escaped (at 3), press 1000 (Character 'c')
-                          , CheckStarted 1, CheckFinished (at 4) 1 allPass, press 2000 (Character 'd'), press 2100 Space]
+                          , CheckStarted 1 js, CheckFinished (at 4) 1 allPass, press 2000 (Character 'd'), press 2100 Space]
       -- The gap after a Pause includes the paused time.
       map (\kp -> (kp.key, kp.sincePrevious)) (concatMap (.keyPresses) (records es))
         @?= [(Character 'a', 0), (Character 'c', 1000)]
-      (run (es <> [press 3000 (Character 'e')])).presses @?= [(1000, Character 'c'), (0, Character 'a')]
+      map (\p -> (p.time, p.key)) (run (es <> [press 3000 (Character 'e')])).presses @?= [(1000, Character 'c'), (0, Character 'a')]
       (run [Escaped (at 1), press 10 (Character 'z')]).presses @?= []
 
   , "a new Run clears the counts" ~: do
@@ -583,13 +647,16 @@ suite = TestList
   , "a passed Run's record has its time, words per minute, backspaces and Solution" ~: do
       let keys5 = concat (replicate 5 [Pressed 0 letter, Pressed 0 Space])
           r = run ( [Edited (at 0) "f"] <> keys5 <> [Pressed 0 Backspace, Edited (at 1) "function fizzBuzz"]
-                  <> [CheckStarted 1, CheckFinished (at 30) 1 allPass] )
+                  <> [CheckStarted 1 js, CheckFinished (at 30) 1 allPass] )
       runRecord fizzBuzz r @?= Just RunRecord
         { puzzleIdentity = "fizzBuzz"
+        , language = js
         , finishedAt = at 30
         , duration = 30
         , wpm = 10
         , backspaces = 1
+        , peeked = False
+        , keyLanguages = []
         , solution = "function fizzBuzz"
         , keyPresses = map (\k -> KeyPress { key = k, sincePrevious = 0 })
             (concat (replicate 5 [letter, Space]) <> [Backspace])
@@ -597,7 +664,7 @@ suite = TestList
 
   , "a passed Run's record names the Puzzle by its identity, not its function" ~: do
       let p = fizzBuzz { identity = "fizzBuzzAgain" }
-          r = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1, CheckFinished (at 6) 1 allPass]
+          r = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1 js, CheckFinished (at 6) 1 allPass]
           rr = runRecord p r
       fmap (.puzzleIdentity) rr @?= Just "fizzBuzzAgain"
       case fmap (decode . encode) rr :: Maybe (Maybe Value) of
@@ -606,8 +673,9 @@ suite = TestList
 
   , "a record reads back what it writes" ~: do
       let rr = RunRecord
-            { puzzleIdentity = "fizzBuzz", finishedAt = at 30, duration = 29.5
-            , wpm = 41.25, backspaces = 3, solution = "function fizzBuzz(n) {}"
+            { puzzleIdentity = "fizzBuzz", language = ps, finishedAt = at 30, duration = 29.5
+            , wpm = 41.25, backspaces = 3, peeked = True, solution = "function fizzBuzz(n) {}"
+            , keyLanguages = []
             , keyPresses =
                 [ KeyPress (Character 'f') 0, KeyPress Space 120, KeyPress Enter 80, KeyPress Tab 95
                 , KeyPress Backspace 3000, KeyPress (Character 'A') 7, KeyPress (Character '€') 1
@@ -619,6 +687,9 @@ suite = TestList
       let old = "{\"backspaces\":2,\"finishedAt\":\"2026-10-17T21:14:03.512Z\",\"puzzle\":\"fizzBuzz\",\"seconds\":24.731,\"solution\":\"function fizzBuzz(n) {\\n  return n;\\n}\",\"wordsPerMinute\":38.81}"
       eitherDecode old @?= Right RunRecord
         { puzzleIdentity = "fizzBuzz"
+        , language = js
+        , peeked = False
+        , keyLanguages = []
         , finishedAt = UTCTime (fromGregorian 2026 10 17) (21 * 3600 + 14 * 60 + 3.512)
         , duration = 24.731
         , wpm = 38.81
@@ -629,8 +700,8 @@ suite = TestList
 
   , "a record stores its key presses as a string of keys and a list of gaps" ~: do
       let rr = RunRecord
-            { puzzleIdentity = "fizzBuzz", finishedAt = at 30, duration = 29.5
-            , wpm = 41.25, backspaces = 1, solution = "aB"
+            { puzzleIdentity = "fizzBuzz", language = js, finishedAt = at 30, duration = 29.5
+            , wpm = 41.25, backspaces = 1, peeked = False, solution = "aB", keyLanguages = []
             , keyPresses = [KeyPress (Character 'a') 0, KeyPress Backspace 80, KeyPress (Character 'B') 95, KeyPress Space 10, KeyPress Enter 20, KeyPress Tab 30] }
       case decode (encode rr) :: Maybe Value of
         Just (Object o) -> do
@@ -654,6 +725,212 @@ suite = TestList
           bad2 = "{" <> base <> ",\"keys\":\"ab\",\"gaps\":[0]}"
       assertBool "keys without gaps" (isLeft (eitherDecode bad1 :: Either String RunRecord))
       assertBool "a gap too few" (isLeft (eitherDecode bad2 :: Either String RunRecord))
+
+  -- The Run and its credit (spec, "The Run and its credit")
+
+  , "words per minute and backspaces are the passing Solution's; the time is the whole Run's" ~: do
+      -- Four words and two Backspaces in the first Language, then two words and
+      -- one Backspace in the second, which passes at 30 s.
+      let first = concat (replicate 4 [Pressed 0 letter, Pressed 0 Space]) <> [Pressed 0 Backspace, Pressed 0 Backspace]
+          second = concat (replicate 2 [Pressed 0 letter, Pressed 0 Space]) <> [Pressed 0 Backspace]
+          r = run ([Edited (at 0) "j"] <> first <> [CodeSwapped ps "p"] <> second
+                  <> [Edited (at 10) "p2", CheckStarted 1 ps, CheckFinished (at 30) 1 allPass])
+      (scoredWords r, scoredBackspaces r) @?= (2, 1)
+      fmap (\rr -> (rr.language, rr.duration, rr.wpm, rr.backspaces)) (runRecord fizzBuzz r) @?= Just (ps, 30, 4, 1)
+
+  , "a Space straight after a switch doesn't follow a character typed in the other Language" ~: do
+      scoredWords (run [Pressed 0 letter, Edited (at 0) "j", CodeSwapped ps "", Pressed 0 Space]) @?= 0
+      scoredWords (run [Pressed 0 letter, Edited (at 0) "j", CodeSwapped ps "", Pressed 0 letter, Pressed 0 Space]) @?= 1
+
+  , "key presses are kept with the Language they were typed in" ~: do
+      let r = run [ press 0 (Character 'a'), Edited (at 1) "a", CodeSwapped ps "", press 100 (Character 'b')
+                  , press 150 (Character 'c'), CodeSwapped js "a", press 400 (Character 'd'), Edited (at 2) "ad"
+                  , CheckStarted 1 js, CheckFinished (at 3) 1 allPass ]
+      case runRecord fizzBuzz r of
+        Just rr -> do
+          rr.language @?= js
+          map (\kp -> (kp.key, kp.sincePrevious)) rr.keyPresses
+            @?= [(Character 'a', 0), (Character 'b', 100), (Character 'c', 50), (Character 'd', 250)]
+          rr.keyLanguages @?= [(js, 1), (ps, 2), (js, 1)]
+        Nothing -> assertFailure "the Run passed but left no record"
+
+  , "a Run that never switched Language records no key Languages" ~: do
+      case records (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 allPass]) of
+        [rr] -> do
+          rr.keyLanguages @?= []
+          case decode (encode rr) :: Maybe Value of
+            Just (Object o) -> KeyMap.member "keyLanguages" o @?= False
+            other -> assertFailure ("expected a JSON object, got " <> show other)
+        other -> assertFailure ("expected one record, got " <> show (length other))
+
+  , "a new Run keeps the Language shown and drops every draft" ~: do
+      let r = run [Edited (at 1) "j", CodeSwapped ps "p", NewRunStarted]
+      r @?= newRunIn ps
+      draftOf js r @?= ""
+
+  -- Peeking (spec, "Peeking")
+
+  , "the hint open for a second or more marks the Run peeked; less doesn't" ~: do
+      let after secs = run (typing <> [HintOpened (at 2), HintClosed (at (2 + secs))])
+      (after 0.9).hasPeeked @?= False
+      (after 1).hasPeeked @?= True
+      (after 30).hasPeeked @?= True
+
+  , "brief mouse-overs add up to nothing" ~: do
+      let blip n = [HintOpened (at n), HintClosed (at (n + 0.9))]
+      (run (typing <> concatMap blip [2, 4 .. 20])).hasPeeked @?= False
+
+  , "a Run passed while the hint has been open for a second is peeked; at less, it isn't" ~: do
+      let passWith secsOpen = run (typing <> [HintOpened (at 2), CheckStarted 1 js, CheckFinished (at (2 + secsOpen)) 1 allPass])
+      (passWith 1).hasPeeked @?= True
+      (passWith 0.5).hasPeeked @?= False
+      fmap (.peeked) (runRecord fizzBuzz (passWith 1)) @?= Just True
+
+  , "the mark covers the whole Run, whichever Language passes" ~: do
+      let r = run [ Edited (at 1) "j", CodeSwapped ps "p", HintOpened (at 2), CodeSwapped js "j"
+                  , HintClosed (at 3.5), CodeSwapped ps "p", Edited (at 4) "p2", CheckStarted 1 ps
+                  , CheckFinished (at 5) 1 allPass ]
+      fmap (\rr -> (rr.language, rr.peeked)) (runRecord fizzBuzz r) @?= Just (ps, True)
+
+  , "a peek before the first keystroke or during a Pause counts; after a skip or a pass it doesn't" ~: do
+      (run [HintOpened (at 0), HintClosed (at 2)]).hasPeeked @?= True
+      (run (typing <> [Escaped (at 2), HintOpened (at 3), HintClosed (at 5)])).hasPeeked @?= True
+      (run [Escaped (at 1), HintOpened (at 2), HintClosed (at 5)]).hasPeeked @?= False
+      let passed = run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 allPass, HintOpened (at 3), HintClosed (at 9)])
+      passed.hasPeeked @?= False
+
+  , "a new Run starts unpeeked" ~: do
+      (run (typing <> [HintOpened (at 2), HintClosed (at 4), NewRunStarted])).hasPeeked @?= False
+
+  , "isPeeked sees a hint that is still open" ~: do
+      let r = run (typing <> [HintOpened (at 2)])
+      (isPeeked (at 2.9) r, isPeeked (at 3) r) @?= (False, True)
+
+  , "the time shows the plain word peeked where the Run's time is shown" ~: do
+      let peekedPass secs = run [ HintOpened (at (-3)), HintClosed (at (-1)), Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space
+                                , CheckStarted 1 js, CheckFinished (at secs) 1 allPass ]
+      statusText fizzBuzz (history []) (peekedPass 12.3)
+        @?= "Passed in 12.3 s (peeked), 5 wpm, 0 backspaces. First time on this Puzzle."
+      -- Beside the best, whether the best or the Run was peeked.
+      let peekedBest = (storedRun "fizzBuzz" 14) { peeked = True }
+      statusText fizzBuzz (history [peekedBest]) (passedIn 12.3)
+        @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. New best (was 14.0 s, peeked)."
+      statusText fizzBuzz (history [peekedBest]) (passedIn 15.1)
+        @?= "Passed in 15.1 s, 4 wpm, 0 backspaces. Best: 14.0 s (peeked)."
+      statusText fizzBuzz (history [storedRun "fizzBuzz" 14]) (peekedPass 15.1)
+        @?= "Passed in 15.1 s (peeked), 4 wpm, 0 backspaces. Best: 14.0 s."
+
+  , "a faster Run replaces the best peeked or not; the mark follows the best" ~: do
+      let rcd secs pk = (storedRun "fizzBuzz" secs) { peeked = pk }
+          best rs = fmap (\b -> (b.duration, b.peeked)) (personalBest js "fizzBuzz" (history rs))
+      -- A slower unpeeked Run doesn't replace a faster peeked best.
+      best [rcd 10 True, rcd 12 False] @?= Just (10, True)
+      -- A faster Run replaces it, peeked or not, and the best's mark is the new Run's.
+      best [rcd 12 True, rcd 8 False] @?= Just (8, False)
+      best [rcd 12 False, rcd 8 True] @?= Just (8, True)
+      best [rcd 8 False, rcd 12 True] @?= Just (8, False)
+
+  -- Languages in saved data and bests
+
+  , "a Run that switched Language is eligible for the best of the Language that passed, with its whole time" ~: do
+      let r = run [ Edited (at 0) "j", CodeSwapped ps "", Edited (at 20) "p", CheckStarted 1 ps, CheckFinished (at 25) 1 allPass ]
+          h = history (records [ Edited (at 0) "j", CodeSwapped ps "", Edited (at 20) "p", CheckStarted 1 ps, CheckFinished (at 25) 1 allPass ])
+      r.passedBy @?= Just ps
+      fmap (.duration) (personalBest ps "fizzBuzz" h) @?= Just 25
+      personalBest js "fizzBuzz" h @?= Nothing
+
+  , "the Personal best is per Puzzle and Language" ~: do
+      let inPs secs = (storedRun "fizzBuzz" secs) { language = ps }
+          h = history [storedRun "fizzBuzz" 20, inPs 5, storedRun "fizzBuzz" 15, inPs 9, (inPs 1) { puzzleIdentity = "other" }]
+      fmap (.duration) (personalBest js "fizzBuzz" h) @?= Just 15
+      fmap (.duration) (personalBest ps "fizzBuzz" h) @?= Just 5
+      fmap (.duration) (personalBest ps "other" h) @?= Just 1
+      personalBest "klingon" "fizzBuzz" h @?= Nothing
+
+  , "a pass is compared with the bests of its own Language" ~: do
+      let inPs secs = (storedRun "fizzBuzz" secs) { language = ps }
+          h = history [storedRun "fizzBuzz" 5, inPs 30]
+          passedInPs secs = run [Edited (at 0) "f", CodeSwapped ps "p", Pressed 0 letter, Pressed 0 Space, CheckStarted 1 ps, CheckFinished (at secs) 1 allPass]
+      statusText fizzBuzz h (passedInPs 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. New best (was 30.0 s)."
+      statusText fizzBuzz h (passedIn 12.3) @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. Best: 5.0 s."
+      statusText fizzBuzz (history [storedRun "fizzBuzz" 5]) (passedInPs 12.3)
+        @?= "Passed in 12.3 s, 5 wpm, 0 backspaces. First time on this Puzzle."
+
+  , "Most missed and Slowest are per Language" ~: do
+      let jsRec = typedRecord ("x\b;" <> tenOf ";")
+          psRec = (typedRecord ("x\b," <> tenOf ",")) { language = ps }
+          h = history [jsRec, psRec]
+      mostMissed js h @?= [(';', 1)]
+      mostMissed ps h @?= [(',', 1)]
+      map fst (slowest js h) @?= ";"
+      map fst (slowest ps h) @?= ","
+      mostMissed "klingon" h @?= []
+
+  , "the last 20 records window counts only that Language's records" ~: do
+      -- 20 later PureScript records would push a JavaScript record out of a
+      -- window that counted every record.
+      let jsMiss = typedRecord ("x\bz" <> tenOf "z")
+          psRec = (typedRecord (tenOf "p")) { language = ps }
+          h = history (jsMiss : replicate 20 psRec)
+      mostMissed js h @?= [('z', 1)]
+      -- And 20 JavaScript records do push it out of JavaScript's window only.
+      let h2 = history (jsMiss : replicate 20 (typedRecord (tenOf "q")) <> replicate 5 psRec)
+      mostMissed js h2 @?= []
+      mostMissed ps (history ((jsMiss { language = ps }) : replicate 20 (typedRecord (tenOf "q")))) @?= [('z', 1)]
+
+  , "a press counts toward the Language it was typed in, even in a Run another Language passed" ~: do
+      -- Typed in JavaScript first, then in PureScript, where the Run passed.
+      let first = "x\b;" <> tenOf ";"
+          second = "x\b," <> tenOf ","
+          rcd = (typedRecord (first <> second))
+            { language = ps, keyLanguages = [(js, length first), (ps, length second)] }
+          h = history [rcd]
+      mostMissed js h @?= [(';', 1)]
+      mostMissed ps h @?= [(',', 1)]
+
+  , "a Backspace run and the first press after a switch don't span the switch" ~: do
+      -- The Backspace ends the JavaScript stretch; the PureScript ';' is no Correction.
+      let first = "x\b"
+          second = tenOf ";"
+          rcd = (typedRecord (first <> second)) { language = ps, keyLanguages = [(js, length first), (ps, length second)] }
+      mostMissed ps (history [rcd]) @?= []
+      -- The first press of the stretch is no Hesitation; gaps after it are.
+      let gaps = [('_', 0)] <> [('a', 100) | _ <- [1 .. 10 :: Int]] <> [('b', 1400)] <> [('b', g) | g <- [100, 100, 100, 100, 100, 300, 300, 300, 300, 300]]
+          rcd2 = (keyed gaps) { language = ps, keyLanguages = [(js, 11), (ps, 11)] }
+      slowest ps (history [rcd2]) @?= [('b', 200)]
+
+  , "stored records of every Language and age decode into one list; old ones are JavaScript" ~: do
+      let base lang = "{\"puzzle\":\"fizzBuzz\",\"finishedAt\":\"2026-10-19T10:00:00Z\",\"seconds\":" <> lang
+          oldRec secs = base secs <> ",\"wordsPerMinute\":10,\"backspaces\":0,\"solution\":\"x\"}"
+          withLang l secs = "{\"language\":" <> l <> ",\"puzzle\":\"fizzBuzz\",\"finishedAt\":\"2026-10-19T10:00:00Z\",\"seconds\":" <> secs <> ",\"wordsPerMinute\":10,\"backspaces\":0,\"solution\":\"x\",\"peeked\":true}"
+          rs = decodeRecords ("[" <> T.intercalate ","
+            [ oldRec "9", withLang "\"purescript\"" "7", withLang "\"javascript\"" "8", withLang "null" "6", withLang "5" "1", oldRec "11", withLang "\"klingon\"" "2" ] <> "]")
+      map (\r -> (r.language, r.duration, r.peeked)) rs
+        @?= [(js, 9, False), (ps, 7, True), (js, 8, True), (js, 6, True), (js, 11, False), ("klingon", 2, True)]
+      let h = history rs
+      fmap (.duration) (personalBest js "fizzBuzz" h) @?= Just 6
+      fmap (.duration) (personalBest ps "fizzBuzz" h) @?= Just 7
+      fmap (.duration) (personalBest "klingon" "fizzBuzz" h) @?= Just 2
+
+  , "a record's Language, peeked flag and key Languages are written and read back" ~: do
+      let rr = (keyed [('a', 0), ('b', 10), ('c', 20)]) { language = ps, peeked = True, keyLanguages = [(js, 1), (ps, 2)] }
+      eitherDecode (encode rr) @?= Right rr
+      case decode (encode rr) :: Maybe Value of
+        Just (Object o) -> do
+          KeyMap.lookup "language" o @?= Just (String "purescript")
+          KeyMap.lookup "peeked" o @?= Just (Bool True)
+          KeyMap.lookup "keyLanguages" o @?= Just (Array [Array [String "javascript", Number 1], Array [String "purescript", Number 2]])
+        other -> assertFailure ("expected a JSON object, got " <> show other)
+      -- Every new record names its Language, peeked or not.
+      case decode (encode (storedRun "fizzBuzz" 3)) :: Maybe Value of
+        Just (Object o) -> (KeyMap.lookup "language" o, KeyMap.lookup "peeked" o) @?= (Just (String "javascript"), Just (Bool False))
+        other -> assertFailure ("expected a JSON object, got " <> show other)
+
+  , "key Languages that don't add up to the key presses are ignored: every press is the record's Language" ~: do
+      let stored kl = "{\"puzzle\":\"fizzBuzz\",\"language\":\"purescript\",\"finishedAt\":\"2026-10-19T10:00:00Z\",\"seconds\":4,\"wordsPerMinute\":15,\"backspaces\":1,\"solution\":\"\",\"keys\":\"ab\",\"gaps\":[0,1],\"keyLanguages\":" <> kl <> "}"
+      fmap (.keyLanguages) (eitherDecode (stored "[[\"javascript\",1],[\"purescript\",5]]") :: Either String RunRecord) @?= Right []
+      fmap (.keyLanguages) (eitherDecode (stored "\"junk\"") :: Either String RunRecord) @?= Right []
+      fmap (.keyLanguages) (eitherDecode (stored "[[\"javascript\",1],[\"purescript\",1]]") :: Either String RunRecord) @?= Right [(js, 1), (ps, 1)]
 
   , "the bank's fizzBuzz is the fizzBuzz Puzzle the game has always played" ~: do
       -- Except the PureScript table, a placeholder until ticket 24.

@@ -31,16 +31,23 @@ statusText p h r = case r.phase of
   Paused -> "Paused. Esc to carry on."
   Skipped -> "Skipped."
   Passed -> case (r.finishedAt, wordsPerMinute r) of
-    (Just f, Just w) -> "Passed in " <> secondsText (elapsed f r) <> ", " <> tshow (round w :: Int)
-      <> " wpm, " <> plural r.backspaces "backspace" <> ". " <> bestText f
-    (Just f, Nothing) -> "Passed in " <> secondsText (elapsed f r) <> ". " <> bestText f
+    (Just f, Just w) -> "Passed in " <> peekedTime r.hasPeeked (elapsed f r) <> ", " <> tshow (round w :: Int)
+      <> " wpm, " <> plural (scoredBackspaces r) "backspace" <> ". " <> bestText f
+    (Just f, Nothing) -> "Passed in " <> peekedTime r.hasPeeked (elapsed f r) <> ". " <> bestText f
     (Nothing, _) -> "Passed."
   where
     -- The Run's time as its record stores it, so it compares like with like.
-    bestText f = case standing p.identity (realToFrac (elapsed f r)) h of
+    -- The Personal best is of the Language that passed.
+    bestText f = case standing (scoringLanguage r) p.identity (realToFrac (elapsed f r)) h of
       FirstTime -> "First time on this Puzzle."
-      NewBest was -> "New best (was " <> secondsText (realToFrac was) <> ")."
-      NotBest best -> "Best: " <> secondsText (realToFrac best) <> "."
+      NewBest was -> "New best (was " <> secondsText (secs was) <> (if was.peeked then ", peeked" else "") <> ")."
+      NotBest best -> "Best: " <> peekedTime best.peeked (secs best) <> "."
+    secs rr = realToFrac rr.duration
+
+-- | A time with the plain word "peeked" after it when the Run peeked at the
+-- Reference Solution; it is shown wherever the Run's time is.
+peekedTime :: Bool -> NominalDiffTime -> Text
+peekedTime wasPeeked t = secondsText t <> (if wasPeeked then " (peeked)" else "")
 
 -- | A time as the page shows it, e.g. @12.3 s@.
 secondsText :: NominalDiffTime -> Text

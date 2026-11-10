@@ -1,13 +1,14 @@
 {-# LANGUAGE NoOverloadedLists #-}
 -- | The Runs in the browser: the Puzzle, the editor, the checks that run the
 -- Solution against the Puzzle's tests whenever the player stops typing, the
--- menu that starts the next Run, and the weak-key lists. The Run's logic is 'Common.Run'; this
--- module turns the page's events into its events and draws the result.
+-- menu that starts the next Run, the hint that shows the Reference Solution,
+-- and the weak-key lists. The Run's logic is 'Common.Run'; this module turns
+-- the page's events into its events and draws the result.
 module Frontend.Run
   ( runWidget
   ) where
 
-import Control.Monad (forM_)
+import Control.Monad (forM, forM_)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
@@ -80,9 +81,11 @@ runWidget workerUrl = mdo
   checkers <- liftIO (newIORef Map.empty)
   let checkerFor l = cachedChecker checkers workerUrl l
 
-  -- The thin bar under the editor: the Language dropdown at its right edge.
-  -- Alt+L from the editor cycles it too.
-  eChosen <- elClass "div" "editor-bar" do
+  -- The thin bar under the editor: the hoverable "?" that shows the
+  -- Reference Solution (ADR 0001), and the Language dropdown at its right
+  -- edge. Alt+L from the editor cycles it too.
+  (eChosen, eHint) <- elClass "div" "editor-bar" do
+    eHint' <- referenceHint (referenceText <$> dLanguage <*> dPuzzle)
     elClass "span" "hint" $ text "Alt+L"
     d <- dropdown (languageName initial) (constDyn (Map.fromList [ (n, t) | (Language n, t) <- available ]))
       DropdownConfig
@@ -90,18 +93,17 @@ runWidget workerUrl = mdo
         , _dropdownConfig_attributes = ffor dMenuOpen \open ->
             "aria-label" =: "Language" <> (if open then "disabled" =: "" else mempty)
         }
-    pure (Language <$> _dropdown_change d)
+    pure (Language <$> _dropdown_change d, eHint')
 
   -- A pick, from the dropdown or Alt+L (not while the menu is open and the
   -- editor read-only): the editor keeps the old draft and shows the new
-  -- Language's. The check in flight, which was of the old Language's code,
-  -- is stopped. The clock isn't touched.
+  -- Language's. The clock isn't touched, and nor is a check under way for
+  -- the Language left: whichever Solution passes first ends the Run (L3).
   eCycled <- performEvent $ liftJSM (nextLanguage editor) <$ gate (not . menuOpen <$> current dRun) eCycle
   let eLanguage = gate (not . menuOpen <$> current dRun) (leftmost [eChosen, eCycled])
       eChange = attachWithMaybe (\old new -> if old == new then Nothing else Just (old, new))
         (current dLanguage) eLanguage
-  eSwitched <- performEvent $ ffor eChange \(old, new) -> liftJSM do
-    stopCheck =<< checkerFor old
+  eSwitched <- performEvent $ ffor eChange \(_, new) -> liftJSM do
     draft <- setLanguage editor new
     pure (new, draft)
 
@@ -116,18 +118,24 @@ runWidget workerUrl = mdo
     liftJSM (stopCheck =<< checkerFor l)
     t <- liftIO getCurrentTime
     pure [Edited t src]
-  -- A check is for the Language its code was typed in: one still waiting
-  -- when the player switches Language is dropped (below). Landing on a draft
-  -- that has text starts one for that draft.
+  -- A check is of the draft of the Language it was typed in, 400 ms after
+  -- that Language's last edit, whichever Language is shown by then (so a
+  -- draft that would pass in the last 400 ms before a switch is still
+  -- checked). Landing on a draft that has text starts one for that draft.
   let eToCheck = leftmost
         [ attachWith (,) (current dLanguage) eTyped
         , fmapMaybe (\(l, draft) -> if T.null (T.strip draft) then Nothing else Just (l, draft)) eSwitched
         ]
-  eQuiet <- debounce quietBeforeCheck eToCheck
+  -- Each Language waits out its own pause in typing, so typing in one never
+  -- swallows another's pending check.
+  eQuiet <- fmap leftmost $ forM available \(l, _) ->
+    debounce quietBeforeCheck (ffilter ((== l) . fst) eToCheck)
+  -- Only a draft that is still the Run's draft: a new Run, or typing since,
+  -- has made an older one stale.
   eCheck <- zipListWithEvent (,) [1 :: Int ..] $
     attachWithMaybe
-      (\(p, current', r) (l, src) -> if l == current' && underWay r then Just (p, l, src) else Nothing)
-      ((,,) <$> current dPuzzle <*> current dLanguage <*> current dRun) eQuiet
+      (\(p, r) (l, src) -> if underWay r && draftOf (languageName l) r == src then Just (p, l, src) else Nothing)
+      ((,) <$> current dPuzzle <*> current dRun) eQuiet
 
   -- The Language's Checker does the rest: parsing, running, and its own
   -- timeouts. A newer check or an edit makes an older reply never arrive.
@@ -135,7 +143,7 @@ runWidget workerUrl = mdo
     c <- checkerFor l
     startCheck c (checkRequest puzzle src) \reply ->
       liftIO (fireReply (n, l, reply))
-    pure [CheckStarted n]
+    pure [CheckStarted n (languageName l)]
 
   eFinished <- performEvent $ ffor eReply \(n, l, reply) -> do
     liftJSM (stopCheck =<< checkerFor l)
@@ -149,16 +157,23 @@ runWidget workerUrl = mdo
     pure [Escaped t]
 
   -- Either menu button starts a new Run with an empty editor.
-  ePuzzle <- performEvent $ ffor (attach ((,) <$> current dPuzzle <*> current dLanguage) eChoice) \((p, l), choice) -> liftJSM do
-    stopCheck =<< checkerFor l
+  ePuzzle <- performEvent $ ffor (attach (current dPuzzle) eChoice) \(p, choice) -> liftJSM do
+    -- Every Language's check under way was of the Run that ends here.
+    mapM_ stopCheck . Map.elems =<< liftIO (readIORef checkers)
     resetEditor editor
     case choice of
       Repeat -> pure p
       NewRandom -> randomPuzzle <$> random
 
-  dRun <- foldDyn (\es r -> foldl (flip step) r es) newRun $ mergeWith (<>)
-    [ eEdited, eStarted, eFinished, eEscaped
-    , (\(_, draft) -> [CodeSwapped draft]) <$> eSwitched
+  -- The hint open for about a second marks the Run peeked; the Run works
+  -- that out from when it opened and closed.
+  eHinted <- performEvent $ ffor eHint \opened -> do
+    t <- liftIO getCurrentTime
+    pure [if opened then HintOpened t else HintClosed t]
+
+  dRun <- foldDyn (\es r -> foldl (flip step) r es) (newRunIn (languageName initial)) $ mergeWith (<>)
+    [ eEdited, eStarted, eFinished, eEscaped, eHinted
+    , (\(l, draft) -> [CodeSwapped (languageName l) draft]) <$> eSwitched
     , [NewRunStarted] <$ ePuzzle, (: []) <$> eKey ]
 
   -- A Run that has just passed is kept in the browser; one given up isn't.
@@ -189,12 +204,13 @@ runWidget workerUrl = mdo
 
   elClass "div" "feedback" $ dyn_ (feedback <$> dPuzzle <*> dRun)
 
-  -- The weak-key lists come from the history, which gains a passed Run's
-  -- record in the frame it passes, so they refresh straight away.
+  -- The weak-key lists are of the Language shown, from the history, which
+  -- gains a passed Run's record in the frame it passes, so they refresh
+  -- straight away.
   elClass "footer" "weak-keys" do
-    weakKeyLine "Most missed" (mostMissed <$> dHistory) \n ->
+    weakKeyLine "Most missed" (mostMissed . languageName <$> dLanguage <*> dHistory) \n ->
       T.pack (show n) <> (if n == 1 then " Correction" else " Corrections")
-    weakKeyLine "Slowest" (slowest <$> dHistory) \ms ->
+    weakKeyLine "Slowest" (slowest . languageName <$> dLanguage <*> dHistory) \ms ->
       "Median Hesitation " <> T.pack (show (round ms :: Int)) <> " ms"
 
 -- | One weak-key list: its label, then each character in a chip of its own
@@ -210,6 +226,24 @@ weakKeyLine label dKeys describe = elClass "p" "weak-key-line" do
   dyn_ $ ffor dUniq \case
     [] -> elAttr "span" ("class" =: "none" <> "title" =: "Not enough typed yet") $ text "—"
     ks -> forM_ ks \(c, score) -> elAttr "kbd" ("title" =: describe score) $ text (T.singleton c)
+
+-- | The hoverable @?@ in the bar under the editor: while the mouse is over it
+-- (or its tooltip) the Reference Solution of the Language shown appears
+-- (ADR 0001, drawn by CSS). Gives when the mouse enters (@True@) and leaves
+-- (@False@); the Run decides whether that was a Peek.
+referenceHint
+  :: (DomBuilder t m, DomBuilderSpace m ~ GhcjsDomSpace, PostBuild t m)
+  => Dynamic t Text -> m (Event t Bool)
+referenceHint dText = do
+  (box, _) <- elAttr' "div" ("class" =: "reference-hint" <> "aria-label" =: "Reference Solution, on hover") do
+    text "?"
+    elAttr "pre" ("class" =: "reference-tip" <> "role" =: "tooltip") $ dynText dText
+  pure (leftmost [True <$ domEvent Mouseenter box, False <$ domEvent Mouseleave box])
+
+-- | The Puzzle's Reference Solution in the Language, for the hint. Empty for
+-- a Language the Puzzle file format doesn't know.
+referenceText :: Language -> Puzzle -> Text
+referenceText l p = maybe "" (.reference) (languageTable (languageName l) p)
 
 -- | The Puzzle's signature in the Language: the lines the player types
 -- first. Empty for a Language the Puzzle file format doesn't know.

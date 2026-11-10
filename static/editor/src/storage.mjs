@@ -2,8 +2,14 @@
 // it can be tested in Node with a fake storage (test/storage.test.mjs).
 //
 // Runs live under one key as a JSON array of records (Common.Run's
-// RunRecord). A record's key presses are its "keys" and "gaps" fields; the
-// rest is its summary, which is never dropped.
+// RunRecord). A record's key presses are its "keys" and "gaps" fields, and
+// "keyLanguages" (which Language each was typed in, present only for a Run
+// that switched); the rest is its summary, which is never dropped: the
+// "language" and "peeked" fields stay whatever happens. Nothing here names a
+// Language, so stripping covers all of them alike. A record with no
+// "language" is a JavaScript Run written before the field existed; it is
+// stored as it is and never rewritten (Haskell reads the missing field as
+// JavaScript, Common.Run's legacyLanguage).
 
 export const runsKey = "type-solution.runs";
 
@@ -63,6 +69,7 @@ function hasKeyPresses(run) {
 function stripKeyPresses(run) {
   delete run.keys;
   delete run.gaps;
+  delete run.keyLanguages;
 }
 
 // Browsers name a full storage differently: QuotaExceededError (code 22) in
