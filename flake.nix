@@ -27,6 +27,10 @@
         } // {
           # The released compiler (a fetch, not a build). Not the default.
           purs-core-wasm = pkgsLib.legacyPackages.${system}.callPackage ./purs-wasm.nix {};
+          # The PureScript library externs and JavaScript, hashed (ticket 28).
+          purs-bundle = pkgsLib.legacyPackages.${system}.callPackage ./purs-bundle.nix {
+            purs-core-wasm = pkgsLib.legacyPackages.${system}.callPackage ./purs-wasm.nix {};
+          };
         });
 
       checks = eachSystem (system:

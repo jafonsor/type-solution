@@ -44,7 +44,7 @@ function walk(dir) {
 // Builds /w: lib/<name>/ (each library's src), src/ for Main.purs, out/ for
 // the compiler's output and externs. Resolves to the session, or throws a
 // message for the Puzzle row.
-async function openSession(wasmPath, libsPath) {
+export async function openSession(wasmPath, libsPath) {
   const dir = mkdtempSync(join(tmpdir(), "puzzle-check-purs-"));
   const session = { dir, srcFiles: [], tick: 0 };
   try {
@@ -87,7 +87,7 @@ function sessionFor(wasmPath, libsPath) {
 
 // * Compiling
 
-const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
+export const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 
 // The first error in the compiler's text as one line: "line:col message".
 // Positions refer to the player's code, so the module header we add is taken
@@ -105,7 +105,7 @@ export function firstError(text, lineOffset) {
 }
 
 // Runs the compiler once on the session's files plus Main.purs.
-function runCompiler(session, source, harness) {
+export function runCompiler(session, source, harness) {
   const main = join(session.dir, "src", "Main.purs");
   writeFileSync(main, source);
   const files = ["/w/src/Main.purs"];
