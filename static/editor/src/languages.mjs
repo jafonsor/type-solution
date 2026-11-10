@@ -10,7 +10,22 @@
 //     settings,        // per-Language limits: {runTimeoutMs, compileTimeoutMs, ...}
 //     createChecker,   // seam 1: ({Worker, url}) => Checker
 //     editorMode,      // seam 2: () => CodeMirror extension
-//     importRules,     // seam 3, optional: absent means no import popup
+//     importRules,     // seam 3, optional: absent means no import popup, and
+//                      // nothing else is lost. Present, it is
+//                      //   {names, isImportLine, offers, importEdit}
+//                      // and import-popup.mjs builds the popup from it:
+//                      //   names()                 promise of the Language's name
+//                      //                           table (its own shape); the popup
+//                      //                           offers nothing until it resolves
+//                      //   isImportLine(text)      a line the popup never opens on
+//                      //   offers(table, doc, word, limit)
+//                      //                           [{name, module, ...}] best first, at
+//                      //                           most limit, the Language's rules
+//                      //                           applied (what is already imported
+//                      //                           or needs no import is left out)
+//                      //   importEdit(doc, offer)  the one change, a CodeMirror
+//                      //                           ChangeSpec, that adds the import
+//                      //                           (merged or a new line)
 //     bundle,          // optional: {start() -> promise}, the Language's lazy
 //                      // download (static/bundle/trigger.mjs decides when)
 //   }

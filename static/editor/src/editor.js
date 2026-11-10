@@ -56,6 +56,8 @@ import * as storage from "./storage.mjs";
 import { languageNamed, languageList, languageNames, registerLanguage, DEFAULT_LANGUAGE } from "./languages.mjs";
 import { createCheckSession } from "./run-check.mjs";
 import { createMode } from "./editor-mode.mjs";
+import { popupOpen, acceptsPopup, closeCompletion } from "./import-popup.mjs";
+import { completionStatus } from "@codemirror/autocomplete";
 import { createLanguageChoice } from "./language-choice.mjs";
 import { createBundleTrigger } from "../../bundle/trigger.mjs";
 
@@ -138,22 +140,22 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
   const languages = languageChoice();
   const mode = new Compartment(); // editing or read-only
   const language = createMode(languageNamed(languages.current)); // the Language's mode
+  let view = null; // the editor, made below
   // Esc is caught for the whole page, before the editor sees it: once the
-  // menu is open the focus is on its buttons, not in the editor.
+  // menu is open the focus is on its buttons, not in the editor. With the
+  // import popup open, Esc closes the popup and nothing else.
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !e.isComposing) {
       e.preventDefault();
-      onEscape();
+      if (view && popupOpen(view.state)) closeCompletion(view);
+      else onEscape();
     }
   }, true);
   // A fresh state, empty: the document of a Language not yet typed in.
   const freshState = () => EditorState.create({
     doc: "",
     extensions: [
-      lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-      theme, syntaxHighlighting(highlight), language.extension,
-      keymap.of([...defaultKeymap, ...historyKeymap]),
-      mode.of(editing(true)),
+      // First, so it sees a key before the import popup's own keys act on it.
       Prec.highest(EditorView.domEventHandlers({
         keydown(e, view) {
           // Esc belongs to the page's listener above.
@@ -169,6 +171,9 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
             return true;
           }
           const key = keyOf(e);
+          // Tab or Enter that accepts the import popup is not typing: the
+          // import line it inserts is not a key press a Run counts.
+          if (acceptsPopup(e.key, completionStatus(view.state))) return false;
           // timeStamp: when the key went down, on the page's monotonic
           // clock, so the time between presses is exact to well under a
           // millisecond however busy the page is afterwards.
@@ -176,12 +181,16 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
           return false;
         },
       })),
+      lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
+      theme, syntaxHighlighting(highlight), language.extension,
+      keymap.of([...defaultKeymap, ...historyKeymap]),
+      mode.of(editing(true)),
       EditorView.updateListener.of((u) => {
         if (u.docChanged && !programmatic) onChange(u.state.doc.toString());
       }),
     ],
   });
-  const view = new EditorView({ parent, state: freshState() });
+  view = new EditorView({ parent, state: freshState() });
   // The mode of the state about to be shown is swapped in with it (the
   // compartment is shared, so the extension is the only thing that differs).
   const stateFor = (name) => freshState().update({ effects: language.switchTo(languageNamed(name)) }).state;

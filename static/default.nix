@@ -16,7 +16,7 @@ let
       fileset = pkgs.lib.fileset.unions [ ./editor ./bundle ];
     };
     sourceRoot = "source/editor";
-    npmDepsHash = "sha256-pChH5S0y7nktUZ4jczTVS6jlyJXBDPf+o8uaXXO8HuY=";
+    npmDepsHash = "sha256-ECA47Z3vgveXS5ZkFoYp6gMQkwAbztzc0j7u4IQwfd8=";
     nativeBuildInputs = [ pkgs.esbuild ];
     dontNpmBuild = true;
     installPhase = ''

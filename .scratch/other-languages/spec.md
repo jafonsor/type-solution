@@ -129,7 +129,7 @@ Calls are curried. Of 185 tests in 50 Puzzles, 31 Puzzles map to plain PureScrip
 
 ### Editor mode
 
-([research 03](research/03-editor-purescript.md)) No CodeMirror 6 grammar for PureScript exists. Use the bundled Haskell mode (~4 KB gzipped) with a ~30-line wrapper.
+([research 03](research/03-editor-purescript.md)) No CodeMirror 6 grammar for PureScript exists. Use the bundled Haskell mode (~4 KB gzipped) with a ~30-line wrapper.  **As built (ticket 32):** `static/editor/src/languages/purescript.mjs`, see "As built (ticket 32)" under Import rules.
 
 ### Import rules and the import popup
 
@@ -145,8 +145,17 @@ Calls are curried. Of 185 tests in 50 Puzzles, 31 Puzzles map to plain PureScrip
   - Set `activateOnTypingDelay: 0` and `interactionDelay: 0` (defaults made an early Tab indent instead of accepting).
   - Do not use `validFor` (it keeps showing an already-imported name).
   - Call `closeCompletion(view)` at the end of `apply`.
-- **Not yet tested:** other browsers, the app's key-press recorder, touch keyboards. Test these when building.
+- **Tested in ticket 32** (`static/editor/browser/drive-imports.mjs`, 38 of 38 checks in Chrome 157 and 38 of 38 in Firefox 158.0.1, headless, on the exported `nix build` output with the shim rebuilt from the same sources plus a test registration of PureScript; the name table loaded from the built `purs-bundle` through `static/bundle/bundle.mjs`):
+  - **Other browsers:** Firefox behaves as Chrome in every check (popup, Tab and Enter accept, merge, Esc, click-away, undo, Tab indent, Language switch). One difference: a Tab pressed 0 ms after the last letter accepts in Firefox but indents in Chrome (5 ms is flaky in Chrome, 10 ms or more accepts in both); no person types that fast, so it is recorded, not fixed.
+  - **The app's key-press recorder:** tested for real. A Run typed with two accepted imports (Tab for one, Enter for the other, one of them a merge) has a record whose `keys` equal exactly what was typed; the accepting Tab and Enter and the import text are not in it. Without the guard (`acceptsPopup` in `editor.js`) the record holds the `\t` and the check fails. The import edit still reaches the Run as a code change, so the Solution that is checked and saved (`solution`) contains the import line.
+  - **Not tested:** Safari (WebKit): `safaridriver --enable` is an administrator step and this session may not run it (the same limit ticket 28 hit; the permission system denied it again); touch keyboards (no device or software keyboard to hand; desktop browsers emulate neither a soft keyboard nor its Tab and Enter, and a phone has no Esc), and input methods that compose text (the key recorder ignores composing keys as before; the popup was not tried with one).
 - **Imports are one line only** (see Bank), because the merge handles only `import M (a, b)`.
+- **As built (ticket 32).** The popup is Language-agnostic: `static/editor/src/import-popup.mjs` builds it from a Language's `importRules` seam, `{names, isImportLine, offers, importEdit}` (documented in `languages.mjs`); a Language without `importRules` (JavaScript) gets no popup and Tab only indents. `editor-mode.mjs` puts the popup in the same Compartment as the mode, so a Language switch swaps both and nothing else. PureScript's side is `static/editor/src/languages/purescript.mjs` (the only file in `src/` that names PureScript; a test keeps it so). It exports the mode, the import rules and `purescriptEditorSeams({loadNames})`, which ticket 31 spreads into the Language value; `namesFromBundle(bundle)` reads the `names` file of the bundle. The rules as built:
+  - **Offered:** names an identifier can be typed as (values, types, classes; no operators) whose first letters match what was typed, ignoring case, in alphabetical order, up to 6. A name two or more modules export is listed once per module, the preferred modules first (`name-clashes.json`; only the preferred ones when the name has a preference, otherwise every module that exports it, alphabetical). Not offered: any name `Prelude` exports (from any module that re-exports it), any name the document already imports from any module (including `class` and listed constructors), the names of a module imported whole (`import M`), and anything on an `import` line.
+  - **Edit:** one change. A class is imported as `class Name`. A merge goes before the closing `)` of the first `import M (...)` line of that module; a bare, `as`, `qualified` or `hiding` import is never merged into (a new line is added instead).
+  - **Colouring and indent:** the Haskell mode with a wrapper (`forall`, `ado`, `derive` keywords, `true` and `false` literals, operators as operators, `"""` raw strings across lines). Enter keeps the last line's indent and adds one unit after a line ending in `where`, `do`, `ado`, `of`, `let`, `then`, `else`, `=`, `->`, `<-` or `\`.
+  - **Keys:** Tab or Enter that accepts the open popup is not reported to the Run; Esc with the popup open closes only the popup (a second Esc opens the menu as before).
+  - **Popup look:** it uses the editor's colour variables, so it follows the light and dark schemes.
 
 ## Bank
 
