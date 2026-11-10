@@ -48,3 +48,5 @@ Decisions the plan left open, made so the feature works (to be confirmed):
 2. The wording: `12.3 s (peeked)` beside a Run's own time and a best, `New best (was 14.0 s, peeked)` inside the parentheses. The ticket says only "the plain word peeked". The live clock does not carry it, and there is no list of bests in the app yet.
 3. A record's key presses are kept whole (all Languages) with `keyLanguages` stretches. A Run is in a Language's window of 20 when it has presses typed in that Language; for a Run that never switched this is exactly "that Language's records", but a switched Run also counts in the Language it left, which the plan's sentence taken alone does not say. The first press of each stretch typed in a Language is not a Hesitation (its gap includes the switch).
 4. The tooltip reacts to the mouse only (no keyboard focus, no touch), as the plan says hover.
+
+Owner confirmed (2026-11-10): peeks count before the first keystroke and while Paused; switched Runs count in every Language they had presses in (`keyLanguages`); the tooltip stays mouse-only. Recorded in the spec.
