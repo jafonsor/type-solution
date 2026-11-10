@@ -30,6 +30,24 @@ node tools/purs-bundle/build.mjs --wasm path/to/purs-core.wasm --libs path/to/ch
 
 Every name carries the first 16 hex digits of the sha256 of its content (for a pack, of the uncompressed pack, so a different zlib version does not rename it). Serve the folder as static files.
 
+## Publishing and checking it (ticket 37)
+
+`deploy.yml` runs `nix build -L .#purs-bundle -o purs-bundle` (the released wasm, no GHC compile), then `tools/export-site.sh result site /type-solution/ purs-bundle`, which copies the bundle to `site/purs/` (the loader addresses files relative to the page, so the base path needs no rewriting), then the check, before anything is published. By hand, for a local export:
+
+```sh
+nix build -o app && nix build .#purs-bundle -o purs-bundle
+tools/export-site.sh app site / purs-bundle     # BASE is /type-solution/ for Pages
+node tools/purs-bundle/verify.mjs --serve site  # serves site/ locally, checks site/purs/
+```
+
+and for the live site:
+
+```sh
+node tools/purs-bundle/verify.mjs https://jafonsor.github.io/type-solution/
+```
+
+`verify.mjs` fetches `purs/current.json`, the manifest and every file it names, and checks each file's hash against its name (a pack: of the gunzipped bytes; sha256 as well where the manifest records it), the sizes against the manifest (`bytes` as served, `rawBytes` unpacked), and exits 1 with one `FAIL` line per problem. It needs no build and no install (Node 20+).
+
 ## What the browser side needs to know
 
 - `static/bundle/bundle.mjs`: fetch `current.json`, then the manifest and the compiler (the "first PureScript pick"), keep them in Cache Storage, delete cached files the new manifest does not name. `part(name)` / `partsWithRequirements(names)` fetch a library's pack only when asked.
@@ -42,4 +60,4 @@ Every name carries the first 16 hex digits of the sha256 of its content (for a p
 PURS_WASM=$(nix build .#purs-core-wasm --no-link --print-out-paths) PURS_LIBS=<checkouts> npm test --prefix tools/purs-bundle
 ```
 
-Without the two variables the build tests skip; the loader and trigger tests (`static/bundle/test/`) always run. `browser/drive.mjs` drives real Chrome (needs `playwright-core`, `esbuild` and `@bjorn3/browser_wasi_shim` in a folder named by `TOOLS`); see its header.
+Without the two variables the build tests (including `test/verify.test.mjs`) skip; the loader and trigger tests (`static/bundle/test/`) always run. `browser/drive.mjs` drives real Chrome (needs `playwright-core`, `esbuild` and `@bjorn3/browser_wasi_shim` in a folder named by `TOOLS`); see its header.

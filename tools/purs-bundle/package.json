@@ -5,6 +5,6 @@
   "description": "Builds the lazy-loaded PureScript bundle (library externs and JavaScript, hashed files, manifest) from the pinned list and the released purs-core.wasm. Uses tools/puzzle-check (npm ci there first).",
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test test/build.test.mjs ../../static/bundle/test/bundle.test.mjs ../../static/bundle/test/trigger.test.mjs"
+    "test": "node --test test/build.test.mjs test/verify.test.mjs ../../static/bundle/test/bundle.test.mjs ../../static/bundle/test/trigger.test.mjs"
   }
 }
