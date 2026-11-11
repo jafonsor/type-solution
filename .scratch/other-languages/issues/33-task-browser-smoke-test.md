@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-human
+Status: resolved
 Blocked by: 31
 
 # 33: One browser smoke test for the PureScript check
@@ -75,3 +75,7 @@ Declined, with the reason:
 - **Terse names in `drive-saved-data.mjs` and `drive-purescript.mjs`:** test tooling, no change.
 - **Preloading or a warm-up compile, the 400 ms target in Chrome with `import Data.Array` (465 ms measured), and the workflows never having run in Actions (tickets 33 and 37 are ready-for-human):** already recorded in the spec and tickets, owner-owned; no change.
 - **Committed prototypes, research and browser drivers beyond acceptance:** tooling only; no change.
+
+## First real run in Actions (2026-11-11)
+
+Owner approved the push of `main`; the push-to-main trigger started `purescript-smoke.yml` (run 43086373219) alongside Deploy. It passed all 7 checks on a GitHub runner: cold-cache job 31 minutes (19:21 to 19:52 UTC), of which the Nix builds (`nix build -o app`, `nix build .#purs-bundle`) dominated and the driver itself took about 45 seconds (the first puzzle-check compile of the libraries about 35 s of that). Confirmed on Linux: `nix build .#purs-bundle.libs` / the library step works, the runner's Chrome drives with playwright-core 1.65.0, `$GITHUB_ENV` carries `PURS_WASM` and `PURS_LIBS`, and the path filters trigger on a push to main. Not exercised: a `workflow_dispatch` run from the Actions tab and a push that should NOT trigger (filters excluding other paths).
