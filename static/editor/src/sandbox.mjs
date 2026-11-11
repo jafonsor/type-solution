@@ -1,10 +1,10 @@
 // The sandbox every Language runs a Solution's tests in: a fresh worker per
-// run, from a pool that keeps one spare started ahead of time (checker.mjs),
+// run, from a pool that keeps one spare started ahead of time (worker-pool.mjs),
 // stopped after the Language's run timeout so an infinite loop can't hang the
 // page. The worker script is the Language's own (its request and reply are
 // text, private to it); the mechanism, its timeout and its stopping are this
 // file's, for every Language: every Language's runner runs here.
-import { createChecker as createWorkerPool } from "./checker.mjs";
+import { createWorkerPool } from "./worker-pool.mjs";
 
 // What the player reads when the sandbox is stopped for running too long.
 export const timeoutMessage = (ms) => "Stopped after " + (ms / 1000).toFixed(1) + " s: an infinite loop?";

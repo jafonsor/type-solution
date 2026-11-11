@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { checkBank, checkRequest, lengthProblems, readPuzzle, referenceLength, runCheck, symbolCounts, symbolReports } from "../puzzle-check.js";
+import { checkBank, checkRequest, clauseArities, lengthProblems, readPuzzle, referenceLength, runCheck, symbolCounts, symbolReports } from "../puzzle-check.js";
 import { languageNamed } from "../languages.js";
 
 const purescript = languageNamed("purescript");
@@ -36,10 +36,10 @@ test("a sound Puzzle passes", async () => {
 });
 
 test("a Reference Solution failing a test fails, naming the test", () =>
-  failsWith("failing-test", /^test 2 failed: double\(-3\) expected 6, got -6$/));
+  failsWith("failing-test", /^test 2 failed: -3 → expected 6, got -6$/));
 
 test("a Reference Solution that throws in a test fails that test", () =>
-  failsWith("crashing", /^test 1 failed: double\(2\) expected 4, got Error: this Reference Solution always crashes$/));
+  failsWith("crashing", /^test 1 failed: 2 → expected 4, got Error: this Reference Solution always crashes$/));
 
 test("a Reference Solution that throws before any test fails as a crash", () =>
   failsWith("crashing-on-load", /^Reference Solution crashed: Error: this Reference Solution crashes before any test runs$/));
@@ -72,6 +72,48 @@ test("the PureScript limits' bounds are inclusive, and imports are not counted",
   // The same text is judged by JavaScript's limits as JavaScript.
   assert.deepEqual(referenceLength(ps(4, 25), purescript), { lines: 4, chars: 100 });
   assert.deepEqual(referenceLength(ps(4, 25)), { lines: 6, chars: 100 + 14 + 24 });
+});
+
+// * The PureScript signature (spec, "Puzzle file")
+
+test("a PureScript signature must be exactly two non-blank lines", async () => {
+  await failsWith("ps-sig-one-line", /^PureScript signature has 1 non-blank lines; it must have 2 /);
+  await failsWith("ps-sig-three-lines", /^PureScript signature has 3 non-blank lines; it must have 2 /);
+});
+
+test("the signature's first line is `<function> :: <type>`, the second `<function> <parameters> = ...`", async () => {
+  await failsWith("ps-sig-first-line", /^PureScript signature's first line must be `double :: <type>`, not `doubled :: Int -> Int`$/);
+  await failsWith("ps-sig-second-line", /^PureScript signature's second line must be `double <parameter names> = \.\.\.`, not `double x = x \* 2`$/);
+});
+
+test("the signature's parameters are as many as the tests' arguments", async () => {
+  await failsWith("ps-sig-params-vs-tests", /^PureScript signature has 2 parameters, but the tests pass 1 arguments$/);
+  await failsWith("ps-sig-tests-differ", /^PureScript signature has 1 parameters, but the tests pass 1 or 2 arguments$/);
+});
+
+test("the Reference Solution defines the function with the signature's number of parameters", async () => {
+  await failsWith("ps-ref-other-params", /^PureScript Reference Solution defines `double` with 2 parameters; the signature has 1$/);
+  await failsWith("ps-ref-point-free", /^PureScript Reference Solution defines `double` with 0 parameters; the signature has 1$/);
+  await failsWith("ps-ref-no-function", /^PureScript Reference Solution does not define `double`$/);
+});
+
+test("clauses are counted by top-level parameters: patterns, guards, several clauses, the type line skipped", () => {
+  const code = [
+    "import Prelude",
+    "",
+    "f :: Int -> Int",
+    "f (Tuple a b) { x, y } [h] _ = a",
+    "f t u",
+    "  | t > u = 1",
+    "  | otherwise = 2",
+    "g = 1",
+    "ff x = 1",
+    "  where f = 2",
+  ].join("\n");
+  assert.deepEqual(clauseArities(code, "f"), [4, 2]);
+  assert.deepEqual(clauseArities(code, "g"), [0]);
+  assert.deepEqual(clauseArities(code, "h"), []);
+  assert.deepEqual(clauseArities("f :: Int\nf = 1", "f"), [0]);
 });
 
 test("a placeholder or empty [purescript] table fails, naming what is wrong", async () => {
@@ -183,7 +225,7 @@ test("a result that depends on the arguments' key order fails, as in the browser
   const { ok, failures } = await checkBank(fixture("argument-key-order"));
   assert.equal(ok, false);
   assert.equal(failures.length, 1);
-  assert.deepEqual(failures[0].problems, ['test 1 failed: keys({"b":1,"a":2}) expected ["b","a"], got ["a","b"]']);
+  assert.deepEqual(failures[0].problems, ['test 1 failed: {"b":1,"a":2} → expected ["b","a"], got ["a","b"]']);
 });
 
 test("the request sends object keys sorted, arrays in order, as the app does", () => {

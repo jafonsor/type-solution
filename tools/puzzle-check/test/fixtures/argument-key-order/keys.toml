@@ -17,14 +17,14 @@ function keys(obj) {
 
 [purescript]
 signature = '''
-x :: Int
-x = ...'''
+keys :: Int -> Int
+keys obj = ...'''
 reference = '''
 import Prelude
 
-x :: Int
-x = one
+keys :: Int -> Int
+keys obj = one
   where
-    -- A constant that these tests never call: the check only reads this Language table's text.
-    one = 1
+    -- Never run by the bank check, which compiles no PureScript: only this text is read.
+    one = obj
 '''

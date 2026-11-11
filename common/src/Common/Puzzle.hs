@@ -7,7 +7,7 @@ module Common.Puzzle
   , LanguageTable (..)
   , PuzzleTest (..)
   , languageTable
-  , callText
+  , inputText
   , valueText
     -- * Puzzle files
   , parsePuzzle
@@ -41,13 +41,13 @@ data Puzzle = Puzzle
     -- ^ The name the Solution must define, and the tests call.
   , prompt :: Text
   , javascript :: LanguageTable
-    -- ^ The JavaScript table. The app uses only this one until the Language
-    -- dropdown lands.
+    -- ^ The JavaScript table, shown when the Language dropdown is on
+    -- JavaScript.
   , purescript :: LanguageTable
-    -- ^ The PureScript table. Every Puzzle has one (Design Contract L4); the
-    -- app doesn't read it yet.
+    -- ^ The PureScript table, shown when the Language dropdown is on
+    -- PureScript. Every Puzzle has one (Design Contract L4).
   , tests :: [PuzzleTest]
-    -- ^ Never shown, but a failed one may be described by 'callText'.
+    -- ^ Never shown, but a failed one is described by 'inputText'.
   }
   deriving stock (Eq, Show, Lift)
 
@@ -77,11 +77,13 @@ languageTable name p = case name of
   "purescript" -> Just p.purescript
   _ -> Nothing
 
--- | How a test's call reads, e.g. @fizzBuzz(10)@.
-callText :: Puzzle -> PuzzleTest -> Text
-callText p t = p.function <> "(" <> T.intercalate ", " (map valueText t.args) <> ")"
+-- | A test's input as a Puzzle prompt writes its examples, whatever the
+-- Language: the arguments, comma separated, e.g. @[1,2,3], 2@ (the player
+-- sees @[1,2,3], 2 → ...@). Never a call in any Language's syntax.
+inputText :: PuzzleTest -> Text
+inputText t = T.intercalate ", " (map valueText t.args)
 
--- | A value as JavaScript would write it.
+-- | A value as JSON text, which is how the Language-neutral tests write it.
 valueText :: Value -> Text
 valueText = T.decodeUtf8 . LBS.toStrict . Aeson.encode
 

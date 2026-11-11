@@ -57,7 +57,7 @@ compiled("a syntax error gives one line with line and column", async () => {
 
 compiled("a failing test is named", async () =>
   assert.deepEqual(await purescriptProblems(clamp, solution("failing-test")), [
-    "test 1 failed: clamp(15, 0, 10) expected 10, got 0",
+    "test 1 failed: 15, 0, 10 → expected 10, got 0",
   ]));
 
 // The import lint reads the committed list: no compiler and no sources needed.
@@ -153,7 +153,7 @@ compiled("a user-written class is resolved by the compiler at each test's types"
 compiled("a failing test through the typed path is named", async () => {
   const label = { function: "label", tests: [{ args: [7], expected: "number 8" }] };
   assert.deepEqual(await purescriptProblems(label, solution("typed-class")), [
-    'test 1 failed: label(7) expected "number 8", got "number 7"',
+    'test 1 failed: 7 → expected "number 8", got "number 7"',
   ]);
 });
 

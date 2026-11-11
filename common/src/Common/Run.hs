@@ -527,12 +527,12 @@ instance FromJSON RunRecord where
       { puzzleIdentity = i, language = l, finishedAt = f, duration = d, wpm = w, backspaces = b
       , peeked = pk, solution = s, keyPresses = ps, keyLanguages = stretches }
 
--- | Each failed test as its call, the expected value and what the Solution
--- returned.
+-- | Each failed test as its input, the expected value and what the Solution
+-- returned (all Language-neutral text, see 'inputText').
 failedTests :: Puzzle -> Outcome -> [(Text, Text, Text)]
 failedTests p = \case
   Results rs ->
-    [ (callText p t, valueText t.expected, res.got)
+    [ (inputText t, valueText t.expected, res.got)
     | (t, res) <- zip p.tests rs
     , not res.passed
     ]

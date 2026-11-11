@@ -5,7 +5,7 @@
 // A request is JSON text {code, fn, tests: [{args, expected}]}; the reply
 // is the Checker's result as JSON text. A check that a newer start() or a
 // stop() has ended never replies, so an older result is ignored.
-export function createCheckSession(language, env) {
+export function createRunChecker(language, env) {
   const checker = language.createChecker(env);
   let current = 0;
 

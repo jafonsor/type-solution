@@ -45,7 +45,7 @@ const bankWith = (extra = "", transform = (t) => t) => {
   writeFileSync(join(dir, "double.toml"), transform(passingToml) + extra);
   return dir;
 };
-const psWith = (reference) => (t) => t.replace(/\[purescript\][\s\S]*$/, `[purescript]\nsignature = "double :: Int -> Int"\nreference = '''\n${reference}'''\n`);
+const psWith = (reference) => (t) => t.replace(/\[purescript\][\s\S]*$/, `[purescript]\nsignature = '''\ndouble :: Int -> Int\ndouble x = ...'''\nreference = '''\n${reference}'''\n`);
 const noLibs = { PURS_LIBS: "" };
 const withoutLibs = (env = {}) => ({ ...process.env, PURS_LIBS: "", ...env });
 

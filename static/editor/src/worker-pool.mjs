@@ -6,7 +6,7 @@
 // `Worker` is the browser's Worker class, passed in so tests can fake it.
 // The worker protocol is the runner script's and isn't touched here: a
 // request string in, a reply string out.
-export function createChecker(Worker, url) {
+export function createWorkerPool(Worker, url) {
   const spawn = () => new Worker(url, { type: "module" });
   let spare = spawn(); // started at creation, i.e. at page load
   let inFlight = null; // the worker running the current check

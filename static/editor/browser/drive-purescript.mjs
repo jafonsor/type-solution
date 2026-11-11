@@ -134,7 +134,7 @@ if (section(1)) {
   knobs.requests = [];
   await t.open();
   check("the dropdown lists JavaScript and PureScript", JSON.stringify(await t.select().locator("option").allInnerTexts()) === '["JavaScript","PureScript"]');
-  await page_wait(t.page, 1500);
+  await t.page.waitForTimeout(1500);
   check("a JavaScript-only page makes no request under purs/", knobs.requests.filter((p) => p.startsWith(BASE + "purs/")).length === 0, JSON.stringify(knobs.requests.filter((p) => p.includes("purs/"))));
   await t.context.close();
 }
@@ -269,7 +269,7 @@ if (section(4)) {
   knobs.requests = [];
   await t.page.reload();
   await t.page.waitForSelector(".cm-content");
-  await page_wait(t.page, 2500);
+  await t.page.waitForTimeout(2500);
   const selected = await t.select().evaluate((s) => s.selectedOptions[0].textContent);
   check("a reload opens in the remembered PureScript", selected === "PureScript");
   check("...from Cache Storage: only the pointer is requested under purs/", JSON.stringify(knobs.requests.filter((p) => p.includes("/purs/"))) === JSON.stringify([BASE + "purs/current.json"]), JSON.stringify(knobs.requests.filter((p) => p.includes("/purs/"))));
@@ -312,4 +312,3 @@ const bad = results.filter((r) => !r.ok);
 console.log(`\n${results.length - bad.length}/${results.length} passed`);
 process.exit(bad.length ? 1 : 0);
 
-function page_wait(page, ms) { return page.waitForTimeout(ms); }

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { createChecker } from "../src/checker.mjs";
+import { createWorkerPool } from "../src/worker-pool.mjs";
 
 function fakeWorkers() {
   const made = [];
@@ -21,7 +21,7 @@ function fakeWorkers() {
 
 test("one spare starts at creation, from the script's own address, as a module", () => {
   const { FakeWorker, made } = fakeWorkers();
-  createChecker(FakeWorker, "js/runner.js");
+  createWorkerPool(FakeWorker, "js/runner.js");
   assert.equal(made.length, 1);
   assert.equal(made[0].url, "js/runner.js");
   assert.deepEqual(made[0].opts, { type: "module" });
@@ -30,7 +30,7 @@ test("one spare starts at creation, from the script's own address, as a module",
 
 test("a check takes the spare and starts the next one", () => {
   const { FakeWorker, made } = fakeWorkers();
-  const c = createChecker(FakeWorker, "r.js");
+  const c = createWorkerPool(FakeWorker, "r.js");
   c.start("req1", () => {});
   assert.equal(made.length, 2);
   assert.deepEqual(made[0].sent, ["req1"]);
@@ -43,7 +43,7 @@ test("a check takes the spare and starts the next one", () => {
 
 test("every worker gets at most one request: none is reused", () => {
   const { FakeWorker, made } = fakeWorkers();
-  const c = createChecker(FakeWorker, "r.js");
+  const c = createWorkerPool(FakeWorker, "r.js");
   for (let i = 0; i < 5; i++) { c.start("r" + i, () => {}); c.stop(); }
   assert.ok(made.every((w) => w.sent.length <= 1));
   assert.equal(made.filter((w) => w.sent.length === 1).length, 5);
@@ -51,7 +51,7 @@ test("every worker gets at most one request: none is reused", () => {
 
 test("the reply reaches the callback; stop terminates that worker, not the spare", () => {
   const { FakeWorker, made } = fakeWorkers();
-  const c = createChecker(FakeWorker, "r.js");
+  const c = createWorkerPool(FakeWorker, "r.js");
   const got = [];
   c.start("req", (r) => got.push(r));
   made[0].onmessage({ data: "reply" });
@@ -63,7 +63,7 @@ test("the reply reaches the callback; stop terminates that worker, not the spare
 
 test("a newer check terminates the one in flight, and its late reply is dropped", () => {
   const { FakeWorker, made } = fakeWorkers();
-  const c = createChecker(FakeWorker, "r.js");
+  const c = createWorkerPool(FakeWorker, "r.js");
   const got = [];
   c.start("a", (r) => got.push(["a", r]));
   const first = made[0];
@@ -75,7 +75,7 @@ test("a newer check terminates the one in flight, and its late reply is dropped"
 
 test("after an endless loop is stopped, the next check works on a fresh worker", () => {
   const { FakeWorker, made } = fakeWorkers();
-  const c = createChecker(FakeWorker, "r.js");
+  const c = createWorkerPool(FakeWorker, "r.js");
   c.start("loop", () => {});
   c.stop(); // the 1 s timeout does this
   assert.equal(made[0].terminated, true);
@@ -88,7 +88,7 @@ test("after an endless loop is stopped, the next check works on a fresh worker",
 
 test("stop with nothing in flight does nothing", () => {
   const { FakeWorker, made } = fakeWorkers();
-  const c = createChecker(FakeWorker, "r.js");
+  const c = createWorkerPool(FakeWorker, "r.js");
   c.stop();
   assert.equal(made[0].terminated, false);
 });

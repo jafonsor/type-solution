@@ -257,7 +257,8 @@ function runTests(session, puzzle, dicts, options, typed) {
   });
 }
 
-const callText = (puzzle, test) => `${puzzle.function}(${test.args.map((a) => JSON.stringify(a)).join(", ")})`;
+// A test's input as a Puzzle prompt writes examples, e.g. `[1,2,3], 2` (Common.Puzzle.inputText).
+const inputText = (test) => test.args.map((a) => JSON.stringify(a)).join(", ");
 
 // The runner: (puzzle, code, options) -> problems. `options` may carry
 // {timeout, wasm, libs} to override the environment. The import check comes
@@ -306,6 +307,6 @@ export async function purescriptProblems(puzzle, code, options = {}) {
   return puzzle.tests.flatMap((t, i) =>
     reply.results[i].pass
       ? []
-      : [`test ${i + 1} failed: ${callText(puzzle, t)} expected ${JSON.stringify(t.expected)}, got ${reply.results[i].got}`],
+      : [`test ${i + 1} failed: ${inputText(t)} → expected ${JSON.stringify(t.expected)}, got ${reply.results[i].got}`],
   );
 }

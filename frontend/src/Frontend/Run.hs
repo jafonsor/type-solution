@@ -363,10 +363,10 @@ svgNS = "http://www.w3.org/2000/svg"
 feedback :: DomBuilder t m => Puzzle -> Run -> m ()
 feedback puzzle r = case r.outcome of
   _ | r.phase == Passed -> blank
-  Just (Results _) -> forM_ (maybe [] (failedTests puzzle) r.outcome) \(call, want, actual) ->
+  Just (Results _) -> forM_ (maybe [] (failedTests puzzle) r.outcome) \(input, want, actual) ->
     elClass "div" "failure" do
-      elClass "code" "call" $ text call
-      text " should return "
+      elClass "code" "call" $ text input
+      text " → "
       elClass "code" "expected" $ text want
       text ", got "
       elClass "code" "got" $ text actual

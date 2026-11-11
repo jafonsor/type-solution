@@ -8,20 +8,11 @@ name: PureScript smoke test
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - "static/editor/**"
-      - "static/bundle/**"
-      - "languages/purescript/**"
-      - "tools/puzzle-check/**"
-      - "tools/purs-bundle/**"
-      - "tools/export-site.sh"
-      - "purs-wasm.nix"
-      - "purs-bundle.nix"
-      - ".github/workflows/purescript-smoke.yml"
   push:
     branches: [main]
     paths:
+      - "common/**"
+      - "frontend/**"
       - "static/editor/**"
       - "static/bundle/**"
       - "languages/purescript/**"

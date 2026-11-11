@@ -65,7 +65,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirro
 import { tags as t } from "@lezer/highlight";
 import * as storage from "./storage.mjs";
 import { languageNamed, languageList, languageNames, registerLanguage, DEFAULT_LANGUAGE } from "./languages.mjs";
-import { createCheckSession } from "./run-check.mjs";
+import { createRunChecker } from "./run-check.mjs";
 import { createMode } from "./editor-mode.mjs";
 import { popupOpen, acceptsPopup, closeCompletion } from "./import-popup.mjs";
 import { completionStatus } from "@codemirror/autocomplete";
@@ -161,7 +161,7 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
   let programmatic = false;
   const languages = languageChoice();
   const mode = new Compartment(); // editing or read-only
-  const language = createMode(languageNamed(languages.current)); // the Language's mode
+  const editorMode = createMode(languageNamed(languages.current)); // the editor (syntax) mode, swapped on a Language switch
   let view = null; // the editor, made below
   // Esc is caught for the whole page, before the editor sees it: once the
   // menu is open the focus is on its buttons, not in the editor. With the
@@ -204,7 +204,7 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
         },
       })),
       lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-      theme, syntaxHighlighting(highlight), language.extension, underlines(),
+      theme, syntaxHighlighting(highlight), editorMode.extension, underlines(),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       mode.of(editing(true)),
       EditorView.updateListener.of((u) => {
@@ -218,7 +218,7 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
   view = new EditorView({ parent, state: settled(freshState()) });
   // The mode of the state about to be shown is swapped in with it (the
   // compartment is shared, so the extension is the only thing that differs).
-  const stateFor = (name) => freshState().update({ effects: language.switchTo(languageNamed(name)) }).state;
+  const stateFor = (name) => freshState().update({ effects: editorMode.switchTo(languageNamed(name)) }).state;
   view.focus();
   return {
     setDoc(text) {
@@ -303,7 +303,7 @@ window.TypeSolution = {
   // Try a failed download again.
   retryLoading(name) { languageChoice(); trigger.retry(name)?.catch(() => {}); },
   createChecker(url, languageName) {
-    return createCheckSession(languageNamed(languageName), { Worker, url });
+    return createRunChecker(languageNamed(languageName), { Worker, url });
   },
   focus(element) { element.focus(); },
   random() { return Math.random(); },

@@ -7,7 +7,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { EditorState } from "@codemirror/state";
 
 import { languageNamed, registerLanguage, languageNames, DEFAULT_LANGUAGE } from "../src/languages.mjs";
-import { createCheckSession } from "../src/run-check.mjs";
+import { createRunChecker } from "../src/run-check.mjs";
 import { createMode } from "../src/editor-mode.mjs";
 import { javascript } from "../src/languages/javascript.mjs";
 
@@ -141,7 +141,7 @@ const result = (status) => ({ status, message: "", line: 1, column: 0, results: 
 test("the run takes the Language as an argument and talks only to its Checker", async () => {
   const { language, calls, waiting } = fakeLanguage();
   const env = { Worker: class {}, url: "fake.js" };
-  const session = createCheckSession(language, env);
+  const session = createRunChecker(language, env);
   assert.deepEqual(calls[0], ["createChecker", env]);
   const replies = [];
   session.start(JSON.stringify({ code: "c", fn: "f", tests }), (r) => replies.push(JSON.parse(r)));
@@ -153,7 +153,7 @@ test("the run takes the Language as an argument and talks only to its Checker", 
 
 test("a newer edit makes the older result ignored, for any Language", async () => {
   const { language, waiting } = fakeLanguage();
-  const session = createCheckSession(language, {});
+  const session = createRunChecker(language, {});
   const replies = [];
   const req = JSON.stringify({ code: "c", fn: "f", tests });
   session.start(req, (r) => replies.push(["old", JSON.parse(r).status]));
@@ -164,7 +164,7 @@ test("a newer edit makes the older result ignored, for any Language", async () =
   assert.deepEqual(replies, [["new", "fail"]]);
   // stop() drops the result of the check in flight, and stops the Checker
   const { language: l2, calls, waiting: w2 } = fakeLanguage();
-  const s2 = createCheckSession(l2, {});
+  const s2 = createRunChecker(l2, {});
   s2.start(req, (r) => replies.push(["stopped", r]));
   s2.stop();
   w2[0](result("pass"));
@@ -176,7 +176,7 @@ test("a newer edit makes the older result ignored, for any Language", async () =
 test("a Checker that throws gives a crash result, not a lost check", async () => {
   const { language } = fakeLanguage();
   language.createChecker = () => ({ check: () => Promise.reject(new Error("boom")), stop() {} });
-  const session = createCheckSession(language, {});
+  const session = createRunChecker(language, {});
   const got = await new Promise((resolve) =>
     session.start(JSON.stringify({ code: "", fn: "f", tests }), (r) => resolve(JSON.parse(r))));
   assert.equal(got.status, "error");

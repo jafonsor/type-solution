@@ -8,7 +8,7 @@ Map: [map.md](map.md). Every decision below comes from the map's resolved ticket
 
 Rules every spec and build decision must keep. Breaking one means stopping to ask.
 
-- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests' code is never shown (and the Reference Solution was never shown, until [ADR 0001](../../docs/adr/0001-reference-solution-shown-on-hover.md) superseded that); a failed test may show its call, its expected value and what the Solution returned.
+- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests' code is never shown (and the Reference Solution was never shown, until [ADR 0001](../../docs/adr/0001-reference-solution-shown-on-hover.md) superseded that); a failed test may show its input, its expected value and what the Solution returned (Language-neutral, no call syntax; changed 2026-11-11 by the owner, see the [other-languages spec](../other-languages/spec.md)).
 - **I2 — Practice comes first.** The game exists to practise a keyboard layout; code Puzzles are the wrapper. The editor gives syntax highlighting and auto-indent only: no auto-closing brackets, no suggestions or autocomplete, nothing that types for the player.
 - **I3 — One Puzzle per Run, ended by passing.** The clock runs from the first keystroke until the tests pass, minus Pauses. Tests re-run when typing pauses; the Run ends by itself on a pass, with no submit key. A Run given up from a Pause isn't recorded.
 - **I4 — No server.** The app is static files only; there is no server-side game logic, no accounts and no global leaderboards. Player code runs only in the player's browser, in a Web Worker that is stopped on a ~1 s timeout.
@@ -53,7 +53,7 @@ Today one Puzzle (fizzBuzz) already plays end to end: editor, live checks, timer
 
 15. As a player, I want my Solution checked automatically 400 ms after I stop typing, so that I never press a submit key.
 16. As a player, I want the status line to show "checking…" while a check runs, so that I know the game is working.
-17. As a player, I want each failed test listed below the editor as "`fizzBuzz(10)` should return `"Buzz"`, got `"10"`", so that I can fix the case I got wrong.
+17. As a player, I want each failed test listed below the editor as "`10` → `"Buzz"`, got `"10"`" (the test's input, the expected value and what the Solution returned; no call syntax, the same for every Language, changed 2026-11-11 by the owner), so that I can fix the case I got wrong.
 18. As a player, I want a syntax error shown as such, so that I know my code doesn't parse yet rather than that it's wrong.
 19. As a player, I want an exception my code throws shown as its message, so that I can find the crash.
 20. As a player who wrote an endless loop, I want the check stopped after about one second with "Stopped after 1.0 s: an infinite loop?", so that the page never freezes.

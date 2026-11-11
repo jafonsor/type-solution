@@ -1046,10 +1046,16 @@ suite = TestList
   , "a Run that hasn't passed has no record" ~: do
       runRecord fizzBuzz (run [Edited (at 0) "f", Pressed 0 letter]) @?= Nothing
 
-  , "failures pair each failed test's call with what the Solution returned" ~: do
+  , "failures pair each failed test's input (no call syntax) with what the Solution returned" ~: do
       let rs = [pass, failWith, pass, pass]
       failedTests fizzBuzz (Results rs)
-        @?= [("fizzBuzz(10)", "\"Buzz\"", "\"3\"")]
+        @?= [("10", "\"Buzz\"", "\"3\"")]
+
+  , "a failed test's input is its arguments in JSON, comma separated, with no call syntax" ~: do
+      inputText PuzzleTest { args = [Number 3], expected = Null } @?= "3"
+      inputText PuzzleTest { args = [Object (KeyMap.fromList [(Key.fromText "a", Number 1)]), String "a"], expected = Null }
+        @?= "{\"a\":1}, \"a\""
+      inputText PuzzleTest { args = [], expected = Null } @?= ""
 
   , "the check request carries the code, the function name and the tests" ~: do
       let req = decode (LBS.fromStrict (T.encodeUtf8 (checkRequest fizzBuzz "let x"))) :: Maybe Value

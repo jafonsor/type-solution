@@ -254,8 +254,8 @@ export function runCheck(request, { runnerPath = defaultRunnerPath, timeout = ti
   });
 }
 
-// How a test's call reads, e.g. fizzBuzz(10) (Common.Puzzle.callText).
-const callText = (puzzle, test) => `${puzzle.function}(${test.args.map((a) => JSON.stringify(a)).join(", ")})`;
+// A test's input as a Puzzle prompt writes examples, e.g. `[1,2,3], 2` (Common.Puzzle.inputText).
+const inputText = (test) => test.args.map((a) => JSON.stringify(a)).join(", ");
 
 // Runs the Reference Solution against the Puzzle's tests; returns problems.
 export async function testProblems(puzzle, options) {
@@ -268,7 +268,7 @@ export async function testProblems(puzzle, options) {
   return puzzle.tests.flatMap((t, i) =>
     reply.results[i].pass
       ? []
-      : [`test ${i + 1} failed: ${callText(puzzle, t)} expected ${JSON.stringify(t.expected)}, got ${reply.results[i].got}`],
+      : [`test ${i + 1} failed: ${inputText(t)} → expected ${JSON.stringify(t.expected)}, got ${reply.results[i].got}`],
   );
 }
 
@@ -309,6 +309,90 @@ export function symbolReport(references, language = languageNamed("javascript"))
 export const symbolReports = (references, languages = defaultLanguages) =>
   languages.map((language) => symbolReport(references[language.name] ?? [], language)).join("\n\n");
 
+// * PureScript signature
+
+// A PureScript Puzzle's `signature` is what the player types first, two lines
+// (spec, "Puzzle file"):
+//
+//     chunk :: forall a. Array a -> Int -> Array (Array a)
+//     chunk items size = ...
+//
+// so the first is `<function> :: <type>`, the second `<function> <parameter
+// names> = ...`, the parameters are as many as the arguments of every test
+// (the tests pass them in that order), and the Reference Solution defines the
+// same function with the same number of parameters. Every one of the bank's
+// signatures has exactly this shape (a constraint or a record type sits in the
+// type, on the first line), so there is no exception to make.
+
+// The number of top-level, whitespace separated items in a clause's parameter
+// text, so a pattern such as `(Tuple a b)` or `{ x, y }` counts once.
+function patternCount(text) {
+  let depth = 0;
+  let count = 0;
+  let inItem = false;
+  for (const c of text) {
+    if ("([{".includes(c)) depth++;
+    if (")]}".includes(c)) depth--;
+    if (/\s/.test(c) && depth === 0) inItem = false;
+    else if (!inItem) {
+      inItem = true;
+      count++;
+    }
+  }
+  return count;
+}
+
+// The parameter counts of the clauses that define `name` in a PureScript
+// text: lines that start (at column 0) with the name and are not its type
+// signature, up to the `=` (or the end of the line, for guards).
+export function clauseArities(code, name) {
+  const clause = new RegExp(`^${name.replace(/[$()*+.?[\\\]^{|}]/g, "\\$&")}(?=\\s|$)(.*)$`);
+  return code
+    .split(/\r?\n/)
+    .map((line) => clause.exec(line))
+    .filter((m) => m && !/^\s*::/.test(m[1]))
+    .map((m) => patternCount(m[1].replace(/\s=(\s.*)?$/, "")));
+}
+
+export function purescriptSignatureProblems(puzzle, language) {
+  const { signature, reference } = puzzle.solutions[language.name];
+  const name = puzzle.function;
+  const lines = signature.split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines.length !== 2) {
+    return [`${language.title} signature has ${lines.length} non-blank lines; it must have 2 (\`${name} :: <type>\`, then \`${name} <parameters> = ...\`)`];
+  }
+  const problems = [];
+  const [typeLine, definition] = lines.map((l) => l.trim());
+  if (!typeLine.startsWith(`${name} :: `) || typeLine.length === `${name} :: `.length) {
+    problems.push(`${language.title} signature's first line must be \`${name} :: <type>\`, not \`${typeLine}\``);
+  }
+  const shape = new RegExp(`^${name} ((?:[a-z_][\\w']*\\s+)*)?= \\.\\.\\.$`);
+  const parameters = shape.exec(definition);
+  if (!parameters) {
+    problems.push(`${language.title} signature's second line must be \`${name} <parameter names> = ...\`, not \`${definition}\``);
+    return problems;
+  }
+  const count = (parameters[1] ?? "").split(/\s+/).filter(Boolean).length;
+  const argCounts = new Set(puzzle.tests.map((t) => t.args.length));
+  if (argCounts.size !== 1 || !argCounts.has(count)) {
+    problems.push(
+      `${language.title} signature has ${count} parameters, but the tests pass ${[...argCounts].sort().join(" or ")} arguments`,
+    );
+  }
+  const arities = clauseArities(reference, name);
+  if (arities.length === 0) {
+    problems.push(`${language.title} Reference Solution does not define \`${name}\``);
+  } else if (arities.some((n) => n !== count)) {
+    problems.push(
+      `${language.title} Reference Solution defines \`${name}\` with ${[...new Set(arities)].sort().join(" or ")} parameters; the signature has ${count}`,
+    );
+  }
+  return problems;
+}
+
+// The signature checks, by Language name: (puzzle, language) -> problems.
+export const signatureLinters = { purescript: purescriptSignatureProblems };
+
 // * The whole bank
 
 // The import checks, by Language name: (code, language, options) -> {problems,
@@ -344,6 +428,7 @@ export async function checkBank(dir = defaultPuzzlesDir, { languagesDir, ...opti
       const { reference } = puzzle.solutions[language.name];
       references[language.name].push(reference);
       found.push(...lengthProblems(reference, language));
+      if (signatureLinters[language.name]) found.push(...signatureLinters[language.name](puzzle, language));
       if (language.importLine && importLinters[language.name]) {
         const lint = importLinters[language.name](reference, language, options);
         found.push(...lint.problems);

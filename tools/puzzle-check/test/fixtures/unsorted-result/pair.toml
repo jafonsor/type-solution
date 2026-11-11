@@ -17,14 +17,14 @@ function pair(x, y) {
 
 [purescript]
 signature = '''
-x :: Int
-x = ...'''
+pair :: Int -> Int -> Int
+pair x y = ...'''
 reference = '''
 import Prelude
 
-x :: Int
-x = one
+pair :: Int -> Int -> Int
+pair x y = one
   where
-    -- A constant that these tests never call: the check only reads this Language table's text.
-    one = 1
+    -- Never run by the bank check, which compiles no PureScript: only this text is read.
+    one = x
 '''
