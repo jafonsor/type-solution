@@ -32,9 +32,18 @@
 //                      // 0 to 100. The status line reads "Loading <title>
 //                      // compiler…" while it runs, and a failure shows a retry;
 //                      // a check made meanwhile waits for it (src/loading.mjs)
+//     canWarmUp,       // optional: true when the Language's Checker has a warmUp
+//                      // (below); the page then calls it, after load and when a
+//                      // new Puzzle opens, only while this is the current
+//                      // Language. Absent (JavaScript): the page does nothing.
 //   }
 //
-// A Checker is {check(code, fn, tests), stop()}. check returns a promise of
+// A Checker is {check(code, fn, tests), stop()} and may have
+// warmUp(code, fn, tests): the Puzzle's Reference Solution, as a head start for
+// the first real check (fetching what the Puzzle needs, say). It never
+// replies, never shows anything, and must never make a real check slower than
+// it would be without it: do nothing a real check would have to wait for.
+// check returns a promise of
 //   {status: "pass" | "fail" | "error", message, line, column, range?, results?}
 // where results is [{pass, got}] (one per test) for pass and fail. An error
 // has kind: "syntax" (doesn't parse), "type" (doesn't type-check), "timeout"

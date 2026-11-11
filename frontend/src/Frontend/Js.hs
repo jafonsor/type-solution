@@ -32,6 +32,8 @@ module Frontend.Js
   , newChecker
   , startCheck
   , stopCheck
+  , canWarmUp
+  , warmUp
   ) where
 
 import Control.Monad (forM_, void)
@@ -196,3 +198,17 @@ stopCheck (Checker pool ref) = do
   forM_ current \replied -> do
     void $ pool # ("stop" :: Text) $ ()
     freeFunction replied
+
+-- | Whether the Language's Checker can get ready for a Puzzle ahead of its
+-- first check (the Language's @canWarmUp@ in static/editor/src/languages.mjs).
+-- Asked first so that a Language without one (JavaScript) gets no Checker made
+-- just to be warmed up.
+canWarmUp :: Language -> JSM Bool
+canWarmUp (Language name) =
+  (jsg ("TypeSolution" :: Text) # ("canWarmUp" :: Text) $ [name]) >>= fromJSValUnchecked
+
+-- | Hand the Checker a Puzzle's Reference Solution, as a check's request
+-- ('Common.Run.checkRequest'), so it can prepare. It stays inside the
+-- Checker: nothing is shown, nothing replies, and no Run event comes of it.
+warmUp :: Checker -> Text -> JSM ()
+warmUp (Checker pool _) request = void $ pool # ("warmUp" :: Text) $ [request]

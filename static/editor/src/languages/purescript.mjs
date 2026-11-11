@@ -245,6 +245,8 @@ export const purescript = {
   }),
   // Seams 2 and 3.
   ...purescriptEditorSeams({ loadNames: namesFromBundle(bundleFacade) }),
+  // The Checker preloads the Puzzle's libraries (check.mjs, warmUp).
+  canWarmUp: true,
   // The lazy download; static/bundle/trigger.mjs decides when it starts.
   bundle: { start: (options) => pageLoader().start(options) },
 };

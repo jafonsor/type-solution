@@ -23,6 +23,7 @@ function fakeLoader({ ready = true } = {}) {
   return {
     module: "the-module", manifest,
     ready: () => (ready ? Promise.resolve() : gate),
+    whenLoaded: () => (ready ? Promise.resolve() : gate),
     release: () => { ready = true; release(); },
     packs: async (libs) => { asked.push(libs); return [...new Set(libs.flatMap((l) => [l, ...manifest.parts[l].requires]))].sort().map((name) => ({ header: { name } })); },
     asked,
@@ -31,7 +32,7 @@ function fakeLoader({ ready = true } = {}) {
 
 // Workers by script: the compiler's answers come from `compiler.reply`, the
 // sandbox's from `sandbox.reply`; either may be left silent.
-function fakeWorkers({ compile, run } = {}) {
+function fakeWorkers({ compile, run, holdAck = false } = {}) {
   const made = { compiler: [], sandbox: [] };
   class FakeWorker {
     constructor(url, opts) {
@@ -43,6 +44,11 @@ function fakeWorkers({ compile, run } = {}) {
       this.sent.push(m);
       const handler = this.kind === "compiler" ? compile : run;
       if (!handler) return;
+      if (this.kind === "compiler" && m.type === "preload") {
+        // a preload is answered with its names, unless the test holds the answer back
+        if (!holdAck) queueMicrotask(() => this.onmessage?.({ data: { type: "preloaded", names: m.packs.map((p) => p.header.name) } }));
+        return;
+      }
       if (this.kind === "compiler" && m.type !== "check") return;
       const reply = handler(m, this);
       if (reply !== undefined) queueMicrotask(() => this.onmessage?.({ data: this.kind === "compiler" ? { type: "result", id: m.id, ...reply } : reply }));
@@ -308,4 +314,210 @@ test("a library that cannot be fetched is a crash result naming the cause", asyn
   const r = await c.check(CODE, "f", tests);
   assert.equal(r.kind, "crash");
   assert.match(r.message, /could not fetch x \(500\)/);
+});
+
+// --- The warm-up: a preload in the worker real checks use, a throwaway compile elsewhere ----
+
+const REFERENCE = "import Prelude\nimport Data.Array (take)\n\nf :: Array Int -> Array Int\nf xs = take 2 xs\n";
+// The worker real checks use is the first one made; the warm-up's throwaway compile is the second.
+const checksOf = (w) => (w?.sent ?? []).filter((m) => m.type === "check");
+const preloadsOf = (made) => made.compiler.flatMap((w) => w.sent.filter((m) => m.type === "preload"));
+const names = (m) => m.packs.map((p) => p.header.name);
+
+test("warm-up: after the compiler loads, the worker real checks use gets the Reference Solution's libraries and compiles nothing; a separate worker does the throwaway compile", async () => {
+  const { c, made, loader } = checker({ compile: () => undefined, run: () => results(true) });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  assert.equal(made.compiler.length, 2);
+  const [main, spare] = made.compiler;
+  assert.deepEqual(main.sent.map((m) => m.type), ["init", "preload"]);
+  assert.deepEqual(names(main.sent[1]), ["arrays", "prelude"], "what the Reference Solution imports and what they need");
+  assert.equal(checksOf(main).length, 0, "no compile in the worker real checks use: nothing in flight for a real check to wait behind");
+  assert.deepEqual(spare.sent.map((m) => m.type), ["init", "check"]);
+  assert.equal(spare.sent[1].source, "module Main where\n" + REFERENCE);
+  assert.equal(made.sandbox.filter((w) => w.sent.length > 0).length, 0, "nothing is run");
+  assert.equal(loader.asked.length, 1);
+});
+
+test("warm-up: the throwaway worker is killed when it finishes, and its result is dropped", async () => {
+  const { c, made } = checker({ compile: () => undefined });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  const spare = made.compiler[1];
+  assert.equal(spare.terminated, false);
+  spare.onmessage({ data: { type: "result", id: 0, ...ok() } });
+  assert.equal(spare.terminated, true);
+  assert.equal(made.compiler[0].terminated, false);
+});
+
+test("warm-up: a real check started while the throwaway compile runs kills it at once and gets exactly what it gets without a warm-up", async () => {
+  const cold = checker({ compile: () => ok(), run: () => results(true) });
+  await cold.c.check(REFERENCE, "f", tests);
+  const warm = checker({ compile: (m) => (m.id === 0 ? undefined : ok()), run: () => results(true) }); // the throwaway compile (id 0) never answers
+  warm.c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  const spare = warm.made.compiler[1];
+  assert.equal(spare.terminated, false, "still compiling");
+  const result = warm.c.check(REFERENCE, "f", tests);
+  assert.equal(spare.terminated, true, "terminated before the real check does anything");
+  assert.equal((await result).status, "pass");
+  const a = checksOf(cold.made.compiler[0])[0];
+  const b = checksOf(warm.made.compiler[0])[0];
+  assert.deepEqual(names(b), [], "the main worker already holds the libraries");
+  assert.deepEqual({ ...b, packs: 0 }, { ...a, packs: 0 }, "the same check otherwise");
+  assert.equal(warm.made.compiler.length, 2, "no third worker");
+  assert.equal(warm.made.compiler[0].terminated, false);
+});
+
+test("warm-up: an edit's stop() kills the throwaway compile too", async () => {
+  const { c, made } = checker({ compile: () => undefined });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  c.stop();
+  assert.equal(made.compiler[1].terminated, true);
+});
+
+test("warm-up: the throwaway compile is killed at the compile timeout if it never ends", { timeout: 5000 }, async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const { c, made } = checker({ compile: () => undefined });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  t.mock.timers.tick(4999);
+  assert.equal(made.compiler[1].terminated, false);
+  t.mock.timers.tick(1);
+  assert.equal(made.compiler[1].terminated, true);
+});
+
+test("warm-up: nothing happens before the compiler has loaded (no worker, no fetch), and the warm-up does not start the download", async () => {
+  const loader = fakeLoader({ ready: false });
+  const { c, made } = checker({ compile: () => ok(), loader });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  assert.equal(made.compiler.length, 0);
+  assert.equal(loader.asked.length, 0);
+  loader.release();
+  await flush();
+  assert.equal(made.compiler.length, 2, "it runs when loading finishes");
+  assert.equal(preloadsOf(made).length, 1);
+});
+
+test("warm-up: the typed path's Harness needs Prelude, so the preload includes it, and the throwaway compile has the Harness", async () => {
+  const { c, made } = checker({ compile: () => undefined });
+  c.warmUp("import Data.Array (take)\nf :: forall a. Show a => Array a -> String\nf xs = show (take 1 xs)\n", "f", tests);
+  await flush();
+  assert.deepEqual(names(preloadsOf(made)[0]), ["arrays", "prelude"]);
+  assert.match(made.compiler[1].sent[1].harness, /^module Harness where/);
+});
+
+test("warm-up: the first real check after a preload is given no libraries again", async () => {
+  const warm = checker({ compile: () => ok(), run: () => results(true) });
+  warm.c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  assert.equal((await warm.c.check(REFERENCE, "f", tests)).status, "pass");
+  assert.deepEqual(names(checksOf(warm.made.compiler[0])[0]), []);
+});
+
+test("warm-up: a real check started while the warm-up is still fetching is not held up: the warm-up gives way and starts nothing", async () => {
+  const gate = (loader) => { let release; const held = new Promise((r) => { release = r; }); const real = loader.packs; loader.packs = async (l) => { await held; return real(l); }; return release; };
+  const cold = checker({ compile: () => ok(), run: () => results(true) });
+  const coldRelease = gate(cold.loader);
+  const coldResult = cold.c.check(REFERENCE, "f", tests);
+  await flush();
+  coldRelease();
+  await coldResult;
+
+  const warm = checker({ compile: () => ok(), run: () => results(true) });
+  const warmRelease = gate(warm.loader);
+  warm.c.warmUp(REFERENCE, "f", tests); // its fetch is under way...
+  await flush();
+  const warmResult = warm.c.check(REFERENCE, "f", tests); // ...when the real check starts
+  await flush();
+  warmRelease();
+  assert.equal((await warmResult).status, "pass");
+  assert.equal(warm.made.compiler.length, 1, "no preload, no throwaway worker after a real check began");
+  assert.deepEqual(warm.made.compiler[0].sent.map((m) => m.type), cold.made.compiler[0].sent.map((m) => m.type), "the worker is sent exactly what it is without a warm-up");
+  assert.deepEqual(names(checksOf(warm.made.compiler[0])[0]), names(checksOf(cold.made.compiler[0])[0]));
+});
+
+test("warm-up: a real check started after the preload was posted but before the worker answered carries the libraries itself", async () => {
+  const { c, made } = checker({ compile: () => ok(), run: () => results(true), holdAck: true });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  assert.equal(preloadsOf(made).length, 1);
+  assert.equal((await c.check(REFERENCE, "f", tests)).status, "pass");
+  assert.deepEqual(names(checksOf(made.compiler[0])[0]), ["arrays", "prelude"], "never relies on a preload that may not have finished");
+});
+
+test("warm-up: it never starts while a check is in flight or a compile is under way", async () => {
+  const waiting = [];
+  const { c, made } = checker({ compile: (m, w) => { waiting.push(() => w.onmessage({ data: { type: "result", id: m.id, ...ok() } })); }, run: () => results(true) });
+  const p = c.check(CODE, "f", tests);
+  await flush();
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  assert.equal(preloadsOf(made).length, 0, "a real check is in flight");
+  assert.equal(made.compiler.length, 1, "and no throwaway worker");
+  waiting[0]();
+  assert.equal((await p).status, "pass");
+  // a check made stale while its compile runs still occupies the worker
+  const q = c.check(CODE + "\n", "f", tests);
+  await flush();
+  const r = c.check(CODE + "\n\n", "f", tests);
+  assert.equal((await q).kind, "stopped");
+  c.stop();
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  assert.equal(preloadsOf(made).length, 0, "the worker is still compiling the older check");
+  assert.equal(made.compiler.length, 1);
+  waiting[1]();
+  await r;
+});
+
+test("warm-up: an edit or a newer warm-up ends one that has not posted yet", async () => {
+  const loader = fakeLoader();
+  let release;
+  const held = new Promise((r) => { release = r; });
+  const real = loader.packs;
+  loader.packs = async (l) => { await held; return real(l); };
+  const { c, made } = checker({ loader, compile: () => ok() });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  c.stop();
+  release();
+  await flush();
+  assert.equal(made.compiler.length, 0);
+});
+
+test("warm-up: its failures are silent, and the real check still runs", async () => {
+  const loader = fakeLoader();
+  const real = loader.packs;
+  let fail = true;
+  loader.packs = async (l) => { if (fail) throw new Error("could not fetch x (500)"); return real(l); };
+  const { c, made } = checker({ loader, compile: () => ok(), run: () => results(true) });
+  assert.equal(c.warmUp(REFERENCE, "f", tests), undefined, "nothing returned, nothing thrown");
+  await flush();
+  fail = false;
+  assert.equal((await c.check(REFERENCE, "f", tests)).status, "pass");
+  assert.equal(made.compiler.length, 1);
+  // a throwaway worker that errors is just killed
+  const b = checker({ compile: () => undefined });
+  b.c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  b.made.compiler[1].onerror({});
+  assert.equal(b.made.compiler[1].terminated, true);
+});
+
+test("warm-up: a worker killed on timeout forgets what it was given, so the next check brings the libraries again", { timeout: 5000 }, async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  let silent = true;
+  const { c, made } = checker({ compile: () => (silent ? undefined : ok()), run: () => results(true) });
+  c.warmUp(REFERENCE, "f", tests);
+  await flush();
+  const first = c.check(REFERENCE, "f", tests);
+  await flush();
+  t.mock.timers.tick(5000);
+  assert.equal((await first).kind, "timeout");
+  silent = false;
+  assert.equal((await c.check(REFERENCE, "f", tests)).status, "pass");
+  assert.deepEqual(names(checksOf(made.compiler.at(-1))[0]), ["arrays", "prelude"]);
 });

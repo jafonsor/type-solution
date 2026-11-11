@@ -11,6 +11,19 @@
 // checks, each timed from `start` to the reply, with the compiler's own time
 // and the number of source files it was given. Also a Prelude-only Solution
 // and `import Data.Array`, and the typed-path Puzzle against a plain one.
+//
+// WARM=none|preload|during (default none) measures the warm-up (ticket 38):
+//   none     nothing before the first check (the compiler downloads inside it)
+//   preload  the page starts the download as a pick would and hands the checker
+//            the Solution as the Reference Solution (checker.warmUp); the first
+//            check is made WAIT_MS (default 3000) after the compiler is ready
+//   during   the same, but the first check starts DURING_MS (default 20) after
+//            the warm-up is handed over, once the compiler is ready: a real
+//            check mid-warm-up
+//   ready    the compiler is ready and the check made at once, with no warm-up
+//            (the baseline for "during")
+// The first check then costs what it costs in the app when the player starts
+// typing after the page has settled.
 import { createRequire } from "node:module";
 import http from "node:http";
 import os from "node:os";
@@ -79,7 +92,17 @@ if (which === "chrome") {
 }
 
 // --- in the page ---------------------------------------------------------------------------------
+const mode = process.env.WARM ?? "none";
+const waitMs = Number(process.env.WAIT_MS ?? 3000);
 const setup = `(() => {
+  window.__ready = () => new Promise((res) => {
+    window.TypeSolution.watchLoading((name, state) => { if (name === "purescript" && state === "ready") res(true); });
+    window.TypeSolution.retryLoading("purescript");
+  });
+  window.__warm = (code, fn, tests) => {
+    window.__session ??= window.TypeSolution.createChecker(new URL("static/js/runner.js", document.baseURI).href, "purescript");
+    window.__session.warmUp(JSON.stringify({ code, fn, tests }));
+  };
   window.__time = (code, fn, tests) => new Promise((res) => {
     window.__session ??= window.TypeSolution.createChecker(new URL("static/js/runner.js", document.baseURI).href, "purescript");
     const t0 = performance.now();
@@ -116,7 +139,17 @@ for (const [name, s] of Object.entries(solutions)) {
   await goto(url);
   await evaluate(setup);
   const out = { loadBefore: load() };
-  out.first = await evaluate(`window.__time(${JSON.stringify(s.code)}, ${JSON.stringify(s.fn)}, ${JSON.stringify(s.tests)})`);
+  const args = `${JSON.stringify(s.code)}, ${JSON.stringify(s.fn)}, ${JSON.stringify(s.tests)}`;
+  if (mode !== "none") await evaluate(`window.__ready()`);
+  if (mode === "othercompile") {
+    // An experiment, not shipped: a throwaway compile in a second Checker's own worker first.
+    await evaluate(`new Promise((res) => { const c = window.TypeSolution.createChecker(new URL("static/js/runner.js", document.baseURI).href, "purescript"); c.start(JSON.stringify({ code: ${JSON.stringify(s.code)}, fn: ${JSON.stringify(s.fn)}, tests: ${JSON.stringify(s.tests)} }), () => res(true)); })`);
+    await new Promise((r) => setTimeout(r, waitMs));
+  }
+  if (mode === "preload") { await evaluate(`window.__warm(${args})`); await new Promise((r) => setTimeout(r, waitMs)); }
+  out.first = mode === "during"
+    ? await evaluate(`(window.__warm(${args}), new Promise((r) => setTimeout(r, ${Number(process.env.DURING_MS ?? 20)})).then(() => window.__time(${args})))`)
+    : await evaluate(`window.__time(${args})`);
   out.unchanged = [];
   out.edited = [];
   for (let i = 0; i < runs; i++) out.unchanged.push(await evaluate(`window.__time(${JSON.stringify(s.code)}, ${JSON.stringify(s.fn)}, ${JSON.stringify(s.tests)})`));

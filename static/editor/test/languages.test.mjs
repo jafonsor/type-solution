@@ -229,3 +229,32 @@ test("only languages/javascript.mjs names acorn, the JavaScript mode or the runn
     assert.ok(!/import .*languages\/javascript/.test(text) || f.pathname.endsWith("languages.mjs"), f.pathname);
   }
 });
+
+// --- The optional warm-up seam (ticket 38) ----------------------------------
+
+test("only a Language that says so is warmed up: JavaScript is not, PureScript is", () => {
+  assert.equal(languageNamed("javascript").canWarmUp, undefined);
+  assert.equal(languageNamed("purescript").canWarmUp, true);
+});
+
+test("warmUp hands the Checker the Reference Solution's request and returns nothing; a Checker without one does nothing", () => {
+  const got = [];
+  const withWarm = { name: "w", createChecker: () => ({ check: () => new Promise(() => {}), stop() {}, warmUp: (...a) => got.push(a) }) };
+  const s = createRunChecker(withWarm, {});
+  assert.equal(s.warmUp(JSON.stringify({ code: "c", fn: "f", tests })), undefined);
+  assert.deepEqual(got, [["c", "f", tests]]);
+  const without = createRunChecker({ name: "n", createChecker: () => ({ check: () => new Promise(() => {}), stop() {} }) }, {});
+  assert.doesNotThrow(() => without.warmUp(JSON.stringify({ code: "c", fn: "f", tests })));
+  // JavaScript's real Checker: no warm-up, and no worker made by asking
+  const { FakeWorker, made } = fakeWorkers();
+  const js = createRunChecker(javascript, { Worker: FakeWorker, url: "runner.js" });
+  const before = made.length;
+  js.warmUp(JSON.stringify({ code: "return 1", fn: "f", tests }));
+  assert.equal(made.length, before, "no worker started by a warm-up");
+});
+
+test("a warm-up that throws, or a request that is not JSON, is silent", () => {
+  const boom = createRunChecker({ name: "b", createChecker: () => ({ check: () => new Promise(() => {}), stop() {}, warmUp() { throw new Error("no"); } }) }, {});
+  assert.doesNotThrow(() => boom.warmUp(JSON.stringify({ code: "c", fn: "f", tests })));
+  assert.doesNotThrow(() => boom.warmUp("not json"));
+});

@@ -6,7 +6,10 @@
 // underlines, the underline option in the menu (Tab, Space, stored), underlines
 // going on the next edit, the import popup working while the compiler loads,
 // switching Language and back, reload with PureScript remembered, and a failed
-// download with a retry.
+// download with a retry, and the warm-up (ticket 38): the libraries a Puzzle's
+// Reference Solution imports are fetched with no typing, at load and for each
+// new Puzzle, only for PureScript, with nothing shown, and a JavaScript-only
+// page starts no compiler worker and requests nothing under purs/.
 //
 //   TOOLS=<folder whose node_modules has playwright-core> \
 //     node drive-purescript.mjs <site folder exported with BASE=/type-solution/ and a purs bundle> [screenshot-prefix]
@@ -19,6 +22,7 @@ import http from "node:http";
 import { createReadStream, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { librariesFor, importedModules } from "../../bundle/purs-tree.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = join(here, "../../..");
@@ -131,11 +135,17 @@ async function newPage() {
 // ============ 1. First visit, JavaScript: nothing under purs/ ===========================
 if (section(1)) {
   const t = await newPage();
+  const compilerWorkers = [];
+  t.page.on("worker", (w) => { if (/purs-compiler/.test(w.url())) compilerWorkers.push(w.url()); });
   knobs.requests = [];
   await t.open();
   check("the dropdown lists JavaScript and PureScript", JSON.stringify(await t.select().locator("option").allInnerTexts()) === '["JavaScript","PureScript"]');
   await t.page.waitForTimeout(1500);
   check("a JavaScript-only page makes no request under purs/", knobs.requests.filter((p) => p.startsWith(BASE + "purs/")).length === 0, JSON.stringify(knobs.requests.filter((p) => p.includes("purs/"))));
+  // New Puzzles open without any warm-up for JavaScript.
+  for (let i = 0; i < 8; i++) { await t.page.evaluate(() => document.querySelector('button[title="New random Puzzle"]').click()); await t.page.waitForTimeout(150); }
+  await t.page.waitForTimeout(500);
+  check("...nor after new Puzzles open (no warm-up for JavaScript)", knobs.requests.filter((p) => p.includes("/purs/")).length === 0 && compilerWorkers.length === 0, JSON.stringify([knobs.requests.filter((p) => p.includes("/purs/")), compilerWorkers]));
   await t.context.close();
 }
 
@@ -272,7 +282,11 @@ if (section(4)) {
   await t.page.waitForTimeout(2500);
   const selected = await t.select().evaluate((s) => s.selectedOptions[0].textContent);
   check("a reload opens in the remembered PureScript", selected === "PureScript");
-  check("...from Cache Storage: only the pointer is requested under purs/", JSON.stringify(knobs.requests.filter((p) => p.includes("/purs/"))) === JSON.stringify([BASE + "purs/current.json"]), JSON.stringify(knobs.requests.filter((p) => p.includes("/purs/"))));
+  // The compiler and the manifest come from Cache Storage: only the pointer is asked for, plus (ticket 38) the
+  // warm-up's library packs, which this page never fetched before (it was only picked, no check made).
+  const reloadPurs = knobs.requests.filter((p) => p.includes("/purs/"));
+  check("...from Cache Storage: the pointer, and no compiler or manifest request", reloadPurs.includes(BASE + "purs/current.json") && !reloadPurs.some((p) => /purs-core|manifest|names/.test(p)), JSON.stringify(reloadPurs.map((p) => p.split("/").pop())));
+  check("...and the only others are the warm-up's library packs", reloadPurs.every((p) => p.endsWith("/current.json") || p.endsWith(".pack.gz")), "");
   const puzzle = await t.reference();
   await t.put(puzzle.reference);
   const done = await t.waitStatus(/^Passed in /, 60000);
@@ -304,6 +318,64 @@ if (section(5)) {
   const done = await t.waitStatus(/^Passed in /, 60000);
   check("Retry (or the next pick) loads it and the waiting check runs", /^Passed in /.test(done), done);
   await t.context.close();
+}
+
+// ============ 6. The warm-up: libraries preloaded, nothing shown ============
+if (section(6)) {
+  const manifestFile = readdirSync(join(site, "purs")).find((n) => /^manifest\..*\.json$/.test(n));
+  const manifest = JSON.parse(readFileSync(join(site, "purs", manifestFile), "utf8"));
+  const packOf = (lib) => BASE + "purs/" + manifest.parts[lib].file;
+  const wanted = (puzzle) => librariesFor(manifest, ["Prelude", ...importedModules(puzzle.reference)]);
+  const packsRequested = () => new Set(knobs.requests.filter((p) => p.endsWith(".pack.gz")));
+
+  // At load, PureScript remembered: the Puzzle's libraries come with no typing at all.
+  const t = await newPage();
+  await t.context.addInitScript(() => localStorage.setItem("type-solution.language", "purescript"));
+  knobs.requests = [];
+  await t.open();
+  const puzzle = await t.reference();
+  const need = wanted(puzzle).filter((l) => l !== undefined);
+  let got = false;
+  for (let i = 0; i < 100 && !got; i++) { got = need.every((l) => packsRequested().has(packOf(l))); if (!got) await t.page.waitForTimeout(100); }
+  check("at load, the libraries the Reference Solution imports are fetched with no typing", got, JSON.stringify({ need, got: [...packsRequested()].map((p) => p.split("/").pop().split(".")[0]) }));
+  await t.page.waitForTimeout(1500);
+  check("...nothing is shown of it: the editor is empty, the status line is still the Run's own", (await t.text()).trim() === "" && /^Start typing/.test(await t.status()), JSON.stringify([await t.text(), await t.status()]));
+  check("...and the Run has not started (no clock)", !(await t.page.locator(".menu").isVisible()), "");
+  const noPeek = await t.page.evaluate(() => localStorage.getItem("type-solution.runs"));
+  check("...no Run record, nothing stored", noPeek === null, String(noPeek));
+
+  // A new Puzzle: the libraries of each Reference Solution that opens are fetched too, before any typing.
+  let fetchedNew = 0;
+  for (let i = 0; i < 60; i++) {
+    const before = packsRequested(); // what had been requested before this Puzzle opened
+    await t.page.evaluate(() => document.querySelector('button[title="New random Puzzle"]').click());
+    await t.page.waitForTimeout(120);
+    const p = await t.reference();
+    const missing = wanted(p).filter((l) => !before.has(packOf(l)));
+    if (missing.length > 0) {
+      let ok = false;
+      for (let k = 0; k < 100 && !ok; k++) { ok = missing.every((l) => packsRequested().has(packOf(l))); if (!ok) await t.page.waitForTimeout(100); }
+      check(`a new Puzzle (${p.id}) fetches its libraries (${missing.join(", ")}) with no typing`, ok, "");
+      fetchedNew++;
+      if (fetchedNew >= 2) break;
+    }
+  }
+  check("...at least one new Puzzle needed a library not yet fetched, and got it", fetchedNew >= 1, String(fetchedNew));
+  await t.context.close();
+
+  // Switching to PureScript from JavaScript after load: the warm-up follows the compiler's load.
+  const u = await newPage();
+  knobs.requests = [];
+  await u.open();
+  await u.page.waitForTimeout(500);
+  check("first, JavaScript: no pack requests", packsRequested().size === 0);
+  await u.select().selectOption({ label: "PureScript" });
+  const p2 = await u.reference();
+  let got2 = false;
+  for (let i = 0; i < 200 && !got2; i++) { got2 = wanted(p2).every((l) => packsRequested().has(packOf(l))); if (!got2) await u.page.waitForTimeout(100); }
+  check("picking PureScript: once the compiler is loaded its Puzzle's libraries are fetched with no typing", got2, "");
+  check("...the status line is not the warm-up's: no error, no text", /^Start typing|^$/.test(await u.status()), await u.status());
+  await u.context.close();
 }
 
 await browser.close();

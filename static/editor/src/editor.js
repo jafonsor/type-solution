@@ -57,7 +57,13 @@
 //                                   // text: status, message, line, column,
 //                                   // results; see languages.mjs), .stop() ends
 //                                   // it. A check a newer one or stop() ended
-//                                   // never replies.
+//                                   // never replies. .warmUp(request) hands it
+//                                   // a Puzzle's Reference Solution (same form
+//                                   // as a check's request) to get ready; no
+//                                   // reply, nothing shown.
+//   TypeSolution.canWarmUp(language) // true when that Language's Checker has a
+//                                   // warmUp (the page asks before making a
+//                                   // Checker just to warm it up)
 import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
 import { EditorState, Prec, Compartment } from "@codemirror/state";
 import { indentOnInput, bracketMatching, syntaxHighlighting, HighlightStyle } from "@codemirror/language";
@@ -305,6 +311,7 @@ window.TypeSolution = {
   createChecker(url, languageName) {
     return createRunChecker(languageNamed(languageName), { Worker, url });
   },
+  canWarmUp(languageName) { return languageNamed(languageName).canWarmUp === true; },
   focus(element) { element.focus(); },
   random() { return Math.random(); },
 };
