@@ -4,8 +4,10 @@
 -- "Common.Bank" holds them all.
 module Common.Puzzle
   ( Puzzle (..)
+  , LanguageTable (..)
   , PuzzleTest (..)
-  , callText
+  , languageTable
+  , inputText
   , valueText
     -- * Puzzle files
   , parsePuzzle
@@ -37,13 +39,25 @@ data Puzzle = Puzzle
     -- recorded under it. Two Puzzles may share a function name, never this.
   , function :: Text
     -- ^ The name the Solution must define, and the tests call.
-  , signature :: Text
   , prompt :: Text
+  , javascript :: LanguageTable
+    -- ^ The JavaScript table, shown when the Language dropdown is on
+    -- JavaScript.
+  , purescript :: LanguageTable
+    -- ^ The PureScript table, shown when the Language dropdown is on
+    -- PureScript. Every Puzzle has one (Design Contract L4).
+  , tests :: [PuzzleTest]
+    -- ^ Never shown, but a failed one is described by 'inputText'.
+  }
+  deriving stock (Eq, Show, Lift)
+
+-- | What a Puzzle holds for one Language: its @[<language>]@ table in the
+-- Puzzle file.
+data LanguageTable = LanguageTable
+  { signature :: Text
   , reference :: Text
     -- ^ The Reference Solution, which proves the tests can be passed. It
     -- travels in the bundle but is never shown (Design Contract I1).
-  , tests :: [PuzzleTest]
-    -- ^ Never shown, but a failed one may be described by 'callText'.
   }
   deriving stock (Eq, Show, Lift)
 
@@ -55,18 +69,29 @@ data PuzzleTest = PuzzleTest
   }
   deriving stock (Eq, Show, Lift)
 
--- | How a test's call reads, e.g. @fizzBuzz(10)@.
-callText :: Puzzle -> PuzzleTest -> Text
-callText p t = p.function <> "(" <> T.intercalate ", " (map valueText t.args) <> ")"
+-- | The Puzzle's table for the Language with this name (the shim's registry
+-- name, @"javascript"@ or @"purescript"@), if the Puzzle file format knows it.
+languageTable :: Text -> Puzzle -> Maybe LanguageTable
+languageTable name p = case name of
+  "javascript" -> Just p.javascript
+  "purescript" -> Just p.purescript
+  _ -> Nothing
 
--- | A value as JavaScript would write it.
+-- | A test's input as a Puzzle prompt writes its examples, whatever the
+-- Language: the arguments, comma separated, e.g. @[1,2,3], 2@ (the player
+-- sees @[1,2,3], 2 → ...@). Never a call in any Language's syntax.
+inputText :: PuzzleTest -> Text
+inputText t = T.intercalate ", " (map valueText t.args)
+
+-- | A value as JSON text, which is how the Language-neutral tests write it.
 valueText :: Value -> Text
 valueText = T.decodeUtf8 . LBS.toStrict . Aeson.encode
 
 -- * Puzzle files
 
 -- | Reads a Puzzle file, given its identity and its TOML text. A missing
--- key, an unknown one or a value of the wrong type is an error.
+-- key or table (every Puzzle has a @[javascript]@ and a @[purescript]@
+-- table), an unknown one or a value of the wrong type is an error.
 parsePuzzle :: Text -> Text -> Either String Puzzle
 parsePuzzle ident src = case Toml.decode src of
   Toml.Success [] (PuzzleFile p) -> Right (p ident)
@@ -105,13 +130,15 @@ newtype PuzzleFile = PuzzleFile (Text -> Puzzle)
 instance Toml.FromValue PuzzleFile where
   fromValue = Toml.parseTableFromValue do
     f <- Toml.reqKey "function"
-    s <- Toml.reqKey "signature"
     p <- Toml.reqKey "prompt"
-    r <- Toml.reqKey "reference"
+    js <- Toml.reqKeyOf "javascript" tableOf
+    ps <- Toml.reqKeyOf "purescript" tableOf
     ts <- Toml.reqKeyOf "tests" (Toml.listOf \_ -> Toml.parseTableFromValue puzzleTest)
     pure $ PuzzleFile \i -> Puzzle
-      { identity = i, function = f, signature = s, prompt = p, reference = r, tests = ts }
+      { identity = i, function = f, prompt = p, javascript = js, purescript = ps, tests = ts }
     where
+      tableOf = Toml.parseTableFromValue $
+        LanguageTable <$> Toml.reqKey "signature" <*> Toml.reqKey "reference"
       puzzleTest = PuzzleTest
         <$> Toml.reqKeyOf "args" (Toml.listOf \_ -> json)
         <*> Toml.reqKeyOf "expected" json

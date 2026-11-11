@@ -55,8 +55,26 @@ jobs:
       - name: Build
         run: nix build -L
 
+      # The PureScript compiler bundle: the released purs-core.wasm plus the
+      # pinned libraries (no GHC compile). Not part of the app's own build, so
+      # a failure here stops the deploy but the app derivation is unchanged.
+      - name: Build the PureScript bundle
+        run: nix build -L .#purs-bundle -o purs-bundle
+
       - name: Export the site
-        run: tools/export-site.sh result site /type-solution/
+        run: tools/export-site.sh result site /type-solution/ purs-bundle
+
+      # Serve the exported folder and check purs/current.json, the manifest and
+      # every file it names against the hashes in their names and the sizes in
+      # the manifest. Also stop before publishing a file Pages would refuse.
+      - name: Verify the PureScript bundle in the site
+        run: |
+          node tools/purs-bundle/verify.mjs --serve site
+          du -sh site site/purs
+          if [ -n "$(find site -type f -size +95M)" ]; then
+            echo "a file in the site is near GitHub Pages' 100 MB limit" >&2
+            exit 1
+          fi
 
       - name: Publish to gh-pages
         uses: peaceiris/actions-gh-pages@v4

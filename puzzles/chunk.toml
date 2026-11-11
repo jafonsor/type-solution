@@ -1,18 +1,7 @@
 function = "chunk"
-signature = "chunk(items, size)"
 prompt = """
 Split a list into lists of the given size; the last one holds whatever \
-is left over. For example, chunk([1,2,3,4,5], 2) → [[1,2],[3,4],[5]]."""
-
-reference = '''
-function chunk(items, size) {
-  const chunks = [];
-  for (let i = 0; i < items.length; i += size) {
-    chunks.push(items.slice(i, i + size));
-  }
-  return chunks;
-}
-'''
+is left over. For example, [1,2,3,4,5], 2 → [[1,2],[3,4],[5]]."""
 
 [[tests]]
 args = [[1, 2, 3, 4, 5], 2]
@@ -25,3 +14,29 @@ expected = [["a", "b", "c"], ["d", "e", "f"]]
 [[tests]]
 args = [[1, 2], 5]
 expected = [[1, 2]]
+
+[javascript]
+signature = "chunk(items, size)"
+reference = '''
+function chunk(items, size) {
+  const chunks = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+}
+'''
+
+[purescript]
+signature = '''
+chunk :: forall a. Array a -> Int -> Array (Array a)
+chunk items size = ...'''
+reference = '''
+import Prelude
+import Data.Array (drop, null, take)
+
+chunk :: forall a. Array a -> Int -> Array (Array a)
+chunk items size
+  | null items = []
+  | otherwise = [take size items] <> chunk (drop size items) size
+'''

@@ -113,3 +113,94 @@ test("storage that can't be read gives no Runs and doesn't throw", () => {
   const blocked = { getItem() { throw new DOMException("The operation is insecure.", "SecurityError"); } };
   assert.equal(loadRuns(blocked), "[]");
 });
+
+// Saved data per Language (ticket 30). A record with no `language` is an old
+// one (JavaScript, as Haskell reads it); the storage layer must leave it
+// exactly as it is, and strip every Language's key presses alike.
+
+// A record of a Run that passed in `language`; `switched` adds the stretches
+// of a Run that was typed in two Languages.
+const inLanguage = (n, presses, language, switched) => ({
+  ...record(n, presses), language, peeked: n % 2 === 0,
+  ...(presses && switched ? { keyLanguages: [["other", 1], [language, presses - 1]] } : {}),
+});
+
+test("old records without a language are stored and handed back exactly as they were", () => {
+  const old = [record(1, 5), record(2, 0)];
+  const s = fakeStorage(1e6, { [runsKey]: JSON.stringify(old) });
+  assert.equal(saveRun(s, inLanguage(3, 5, "purescript")), true);
+  const runs = stored(s);
+  assert.deepEqual(runs.slice(0, 2), old);
+  assert.ok(runs.slice(0, 2).every((r) => !("language" in r)), "an old record is never given a language");
+  assert.equal(runs[2].language, "purescript");
+  // A page that reads them gets the same text it stored, mixed list included.
+  assert.deepEqual(JSON.parse(loadRuns(s)), runs);
+});
+
+test("when storage is full, key presses are stripped from the oldest records of every Language, summaries kept", () => {
+  const old = [
+    record(1, 200),                            // old: no language
+    inLanguage(2, 200, "purescript", true),    // a Run that switched
+    inLanguage(3, 200, "javascript"),
+    inLanguage(4, 200, "purescript"),
+  ];
+  const quota = runsKey.length + JSON.stringify(old).length + JSON.stringify(inLanguage(5, 0, "javascript")).length + 100;
+  const s = fakeStorage(quota, { [runsKey]: JSON.stringify(old) });
+  assert.equal(saveRun(s, inLanguage(5, 400, "javascript")), true);
+  const runs = stored(s);
+  assert.deepEqual(summaries(runs), ["p1", "p2", "p3", "p4", "p5"]);
+  const stripped = runs.filter((r) => !("keys" in r));
+  assert.ok(stripped.length >= 2, "more than one record had to give up its key presses");
+  assert.deepEqual(summaries(stripped), summaries(runs).slice(0, stripped.length), "oldest first");
+  for (const r of runs) {
+    const original = old.find((o) => o.puzzle === r.puzzle) ?? inLanguage(5, 400, "javascript");
+    // Every field but the key presses survives, in every Language.
+    const { keys, gaps, keyLanguages, ...summary } = original;
+    const { keys: k, gaps: g, keyLanguages: kl, ...kept } = r;
+    assert.deepEqual(kept, summary);
+    // The stretches go with the presses they describe, never alone.
+    if (!("keys" in r)) assert.equal("keyLanguages" in r, false);
+  }
+});
+
+test("a stripped record that switched Language keeps its language and peeked flag", () => {
+  const old = [inLanguage(2, 300, "purescript", true)];
+  const quota = runsKey.length + JSON.stringify(old).length + JSON.stringify(inLanguage(3, 0, "javascript")).length + 100;
+  const s = fakeStorage(quota, { [runsKey]: JSON.stringify(old) });
+  assert.equal(saveRun(s, inLanguage(3, 100, "javascript")), true);
+  assert.deepEqual(stored(s)[0], { ...record(2, 0), language: "purescript", peeked: true });
+});
+
+// --- Options ------------------------------------------------------------------
+
+import { loadOptions, saveOption, optionsKey } from "../src/storage.mjs";
+
+test("options: a missing key, bad JSON, a non-object and a missing or odd field all take the default (underlines on)", () => {
+  for (const stored of [undefined, "not json", "[]", "null", "3", "{}", '{"underlines":"yes"}', '{"other":1}']) {
+    const s = fakeStorage(1e6, stored === undefined ? {} : { [optionsKey]: stored });
+    assert.deepEqual(loadOptions(s), { underlines: true }, String(stored));
+  }
+  assert.deepEqual(loadOptions({ getItem() { throw new Error("blocked"); } }), { underlines: true });
+});
+
+test("options: a stored underlines value is read", () => {
+  assert.equal(loadOptions(fakeStorage(1e6, { [optionsKey]: '{"underlines":false}' })).underlines, false);
+  assert.equal(loadOptions(fakeStorage(1e6, { [optionsKey]: '{"underlines":true}' })).underlines, true);
+});
+
+test("options: saving keeps the fields it does not know and writes underlines first", () => {
+  const s = fakeStorage(1e6, { [optionsKey]: '{"theme":"dark","underlines":true,"n":[1]}' });
+  assert.equal(saveOption(s, "underlines", false), true);
+  assert.equal(s.getItem(optionsKey), '{"underlines":false,"theme":"dark","n":[1]}');
+  const fresh = fakeStorage(1e6);
+  saveOption(fresh, "underlines", false);
+  assert.equal(fresh.getItem(optionsKey), '{"underlines":false}');
+});
+
+test("options: saving over something that is not an object replaces it; a full storage does not throw", () => {
+  const s = fakeStorage(1e6, { [optionsKey]: "garbage" });
+  saveOption(s, "underlines", true);
+  assert.equal(s.getItem(optionsKey), '{"underlines":true}');
+  const full = fakeStorage(5);
+  assert.equal(saveOption(full, "underlines", false), false);
+});

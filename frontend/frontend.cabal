@@ -197,6 +197,7 @@ library
                       --
                     , common
                       --
+                    , containers
                     , ghcjs-dom
                     , jsaddle
                     , obelisk-frontend

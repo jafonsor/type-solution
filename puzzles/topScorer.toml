@@ -1,18 +1,7 @@
 function = "topScorer"
-signature = "topScorer(scores)"
 prompt = """
 Given a non-empty object of names to distinct scores, return the name with \
-the highest score. For example, topScorer({ana: 72, bo: 91, cy: 60}) → "bo"."""
-
-reference = '''
-function topScorer(scores) {
-  let best = '';
-  for (const name in scores) {
-    if (best === '' || scores[name] > scores[best]) best = name;
-  }
-  return best;
-}
-'''
+the highest score. For example, {ana: 72, bo: 91, cy: 60} → "bo"."""
 
 [[tests]]
 args = [{ ana = 72, bo = 91, cy = 60 }]
@@ -29,3 +18,30 @@ expected = "solo"
 [[tests]]
 args = [{ a = -5, b = -2 }]
 expected = "b"
+
+[javascript]
+signature = "topScorer(scores)"
+reference = '''
+function topScorer(scores) {
+  let best = '';
+  for (const name in scores) {
+    if (best === '' || scores[name] > scores[best]) best = name;
+  }
+  return best;
+}
+'''
+
+[purescript]
+signature = '''
+topScorer :: Object Int -> String
+topScorer scores = ...'''
+reference = '''
+import Prelude
+import Foreign.Object (Object, fold)
+
+topScorer :: Object Int -> String
+topScorer scores = best.name
+  where
+    best = fold pick { name: "", score: bottom } scores
+    pick leader name score = if score > leader.score then { name, score } else leader
+'''

@@ -1,6 +1,12 @@
 function = "double"
-signature = "double(x)"
 prompt = "Return x times two."
+
+[[tests]]
+args = [2]
+expected = 4
+
+[javascript]
+signature = "double(x)"
 reference = '''
 function double(x) {
   // This comment makes the Reference Solution far too long to type in one short Run.
@@ -11,6 +17,16 @@ function double(x) {
 }
 '''
 
-[[tests]]
-args = [2]
-expected = 4
+[purescript]
+signature = '''
+double :: Int -> Int
+double x = ...'''
+reference = '''
+import Prelude
+
+double :: Int -> Int
+double x = twice
+  where
+    -- Doubles its argument, then returns it to the caller.
+    twice = x * 2
+'''

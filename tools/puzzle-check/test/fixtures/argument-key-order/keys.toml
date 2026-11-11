@@ -1,6 +1,12 @@
 function = "keys"
-signature = "keys(obj)"
 prompt = "Return the object's keys."
+
+[[tests]]
+args = [{ b = 1, a = 2 }]
+expected = ["b", "a"]
+
+[javascript]
+signature = "keys(obj)"
 reference = '''
 function keys(obj) {
   // Depends on the order the argument's keys arrive in, which the file
@@ -9,6 +15,16 @@ function keys(obj) {
 }
 '''
 
-[[tests]]
-args = [{ b = 1, a = 2 }]
-expected = ["b", "a"]
+[purescript]
+signature = '''
+keys :: Int -> Int
+keys obj = ...'''
+reference = '''
+import Prelude
+
+keys :: Int -> Int
+keys obj = one
+  where
+    -- Never run by the bank check, which compiles no PureScript: only this text is read.
+    one = obj
+'''

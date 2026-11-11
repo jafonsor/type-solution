@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 10: Warm spare worker
 
@@ -8,10 +8,10 @@ A check no longer waits for a test-runner worker to start: one worker is always 
 
 ## Acceptance criteria
 
-- [ ] One spare test-runner worker is started when the page loads and after each check takes the previous one.
-- [ ] Each check still uses a fresh worker (never one that already ran a Solution), terminated when its reply arrives, after ~1 s, or when a newer check replaces it.
-- [ ] An endless loop still times out with "Stopped after 1.0 s: an infinite loop?", and the next check still works.
-- [ ] The fizzBuzz Run still passes in `ob-run`.
+- [x] One spare test-runner worker is started when the page loads and after each check takes the previous one.
+- [x] Each check still uses a fresh worker (never one that already ran a Solution), terminated when its reply arrives, after ~1 s, or when a newer check replaces it.
+- [x] An endless loop still times out with "Stopped after 1.0 s: an infinite loop?", and the next check still works.
+- [x] The fizzBuzz Run still passes in `ob-run`.
 
 ## Blocked by
 

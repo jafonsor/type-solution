@@ -1,18 +1,7 @@
 function = "countVowels"
-signature = "countVowels(text)"
 prompt = """
 Count the vowels a, e, i, o and u in the text, upper or lower case. \
-For example, countVowels("Hello World") → 3."""
-
-reference = '''
-function countVowels(text) {
-  let count = 0;
-  for (const c of text.toLowerCase()) {
-    if ('aeiou'.includes(c)) count++;
-  }
-  return count;
-}
-'''
+For example, "Hello World" → 3."""
 
 [[tests]]
 args = ["Hello World"]
@@ -29,3 +18,31 @@ expected = 0
 [[tests]]
 args = [""]
 expected = 0
+
+[javascript]
+signature = "countVowels(text)"
+reference = '''
+function countVowels(text) {
+  let count = 0;
+  for (const c of text.toLowerCase()) {
+    if ('aeiou'.includes(c)) count++;
+  }
+  return count;
+}
+'''
+
+[purescript]
+signature = '''
+countVowels :: String -> Int
+countVowels text = ...'''
+reference = '''
+import Prelude
+import Data.Array (elem, filter, length)
+import Data.String (toLower)
+import Data.String.CodeUnits (toCharArray)
+
+countVowels :: String -> Int
+countVowels text = text # toLower # toCharArray # filter isVowel # length
+  where
+    isVowel c = elem c ['a', 'e', 'i', 'o', 'u']
+'''

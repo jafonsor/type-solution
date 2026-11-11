@@ -8,13 +8,13 @@ Map: [map.md](map.md). Every decision below comes from the map's resolved ticket
 
 Rules every spec and build decision must keep. Breaking one means stopping to ask.
 
-- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests' code and the Reference Solution are never shown; a failed test may show its call, its expected value and what the Solution returned.
+- **I1 — The player solves, never copies.** The screen shows only the Puzzle; the player types any JavaScript Solution that passes its hidden tests. The tests' code is never shown (and the Reference Solution was never shown, until [ADR 0001](../../docs/adr/0001-reference-solution-shown-on-hover.md) superseded that); a failed test may show its input, its expected value and what the Solution returned (Language-neutral, no call syntax; changed 2026-11-11 by the owner, see the [other-languages spec](../other-languages/spec.md)).
 - **I2 — Practice comes first.** The game exists to practise a keyboard layout; code Puzzles are the wrapper. The editor gives syntax highlighting and auto-indent only: no auto-closing brackets, no suggestions or autocomplete, nothing that types for the player.
 - **I3 — One Puzzle per Run, ended by passing.** The clock runs from the first keystroke until the tests pass, minus Pauses. Tests re-run when typing pauses; the Run ends by itself on a pass, with no submit key. A Run given up from a Pause isn't recorded.
 - **I4 — No server.** The app is static files only; there is no server-side game logic, no accounts and no global leaderboards. Player code runs only in the player's browser, in a Web Worker that is stopped on a ~1 s timeout.
 - **I5 — Results stay in this browser.** Runs, their key presses, Personal bests and weak-key stats are kept in the player's own browser storage and never leave it.
 - **I6 — Puzzles are hand-made files.** Each Puzzle is a TOML file in the repo, read in when the app is built, with a Reference Solution that passes its tests. The app never calls an LLM and players can't author Puzzles.
-- **I7 — JavaScript only.** Solutions are JavaScript; no other language is offered.
+- **I7 — JavaScript only.** Superseded by the [other-languages spec](../other-languages/spec.md) and [ADR 0002](../../docs/adr/0002-solutions-can-be-typed-in-more-than-one-language.md): Solutions can be typed in more than one Language.
 - **I8 — The chosen stack.** reflex-dom on Obelisk v2, compiled to WebAssembly, with CodeMirror 6 behind a thin JS shim and a plain-JS test-runner worker; built by GitHub Actions and served by GitHub Pages.
 
 ## Problem Statement
@@ -53,14 +53,14 @@ Today one Puzzle (fizzBuzz) already plays end to end: editor, live checks, timer
 
 15. As a player, I want my Solution checked automatically 400 ms after I stop typing, so that I never press a submit key.
 16. As a player, I want the status line to show "checking…" while a check runs, so that I know the game is working.
-17. As a player, I want each failed test listed below the editor as "`fizzBuzz(10)` should return `"Buzz"`, got `"10"`", so that I can fix the case I got wrong.
+17. As a player, I want each failed test listed below the editor as "`10` → `"Buzz"`, got `"10"`" (the test's input, the expected value and what the Solution returned; no call syntax, the same for every Language, changed 2026-11-11 by the owner), so that I can fix the case I got wrong.
 18. As a player, I want a syntax error shown as such, so that I know my code doesn't parse yet rather than that it's wrong.
 19. As a player, I want an exception my code throws shown as its message, so that I can find the crash.
 20. As a player who wrote an endless loop, I want the check stopped after about one second with "Stopped after 1.0 s: an infinite loop?", so that the page never freezes.
 21. As a player, I want the status line to say how many tests pass (e.g. "2/4 tests pass"), so that I can see my progress.
 22. As a player, I want the last check's feedback to stay visible while I type again, so that I can read it while fixing the code.
 23. As a player, I want a check made outdated by further typing to be dropped, so that I never see feedback for code I've already changed.
-24. As a player, I never want to see the tests' code or the Reference Solution, so that I solve the Puzzle myself.
+24. As a player, I never want to see the tests' code, so that I solve the Puzzle myself. (Superseded in part by [ADR 0001](../../docs/adr/0001-reference-solution-shown-on-hover.md): the Reference Solution can now be shown on hover.)
 
 **Passing**
 
@@ -161,7 +161,7 @@ Today one Puzzle (fizzBuzz) already plays end to end: editor, live checks, timer
   - **Edits** are ignored while Paused, Skipped or Passed.
   - A **"start new Run" event** (from either menu button) replaces the Run with a fresh one on the chosen Puzzle. A Run dropped this way from Paused leaves no record.
   - The menu is open exactly when the phase is Paused, Skipped or Passed, so the Run decides it, not the page. (I3, I5)
-- **Checks.** 400 ms after the last edit, the Solution is first parsed with acorn; code that doesn't parse fails at once with the parser's message. Code that parses goes to a fresh module Web Worker started from the runner script's own file address (no blob URL, no CSP), which is terminated when its reply arrives, after ~1 s (a timeout), or when a newer check replaces it. The worker protocol stays as it is: JSON text with the code, the function name and the tests in; `results` or `error` out. Keep one pre-spawned spare worker, so that a check doesn't wait for a worker to start (decided in [Research: sandboxing player JavaScript in the browser](issues/03-research-js-sandbox.md), not built yet). (I3, I4, I7)
+- **Checks.** 400 ms after the last edit, the Solution is first parsed with acorn; code that doesn't parse fails at once with the parser's message. Code that parses goes to a fresh module Web Worker started from the runner script's own file address (no blob URL, no CSP), which is terminated when its reply arrives, after ~1 s (a timeout), or when a newer check replaces it. The worker protocol stays as it is: JSON text with the code, the function name and the tests in; `results` or `error` out. One pre-spawned spare worker is kept (started at page load and again each time a check takes it), so that a check doesn't wait for a worker to start; a worker that has run a Solution is never reused (decided in [Research: sandboxing player JavaScript in the browser](issues/03-research-js-sandbox.md), built in ticket 10: `static/editor/src/checker.mjs`). (I3, I4, I7)
 - **Status line text** is a pure function of the Run and the stored history: "Start typing: the clock starts on your first keystroke." / "checking…" / "n/m tests pass", "doesn't parse yet", "crashed", "timed out" / "Paused. Esc to carry on." / "Skipped." / on a pass "Passed in 12.3 s, 42 wpm, 3 backspaces." plus one of "First time on this Puzzle.", "New best (was 14.0 s)." or "Best: 12.3 s.". The old "Press Esc for another Run" wording goes. (I3, I5)
 
 **History and stats**
@@ -198,7 +198,7 @@ Today one Puzzle (fizzBuzz) already plays end to end: editor, live checks, timer
 ## Out of Scope
 
 - Accounts, global leaderboards and any server-side logic.
-- Languages other than JavaScript.
+- Languages other than JavaScript (superseded: see I7).
 - Runtime LLM generation of Puzzles; Puzzles written by players.
 - Runs of several Puzzles; daily seeded sets.
 - Share-as-text of a result.

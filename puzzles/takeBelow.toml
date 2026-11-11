@@ -1,20 +1,8 @@
 function = "takeBelow"
-signature = "takeBelow(nums, limit)"
 prompt = """
 Return the numbers from the start of a list up to, not including, the \
 first one that is limit or more; if none is, the whole list. For example, \
-takeBelow([1,4,2,9,3], 5) → [1,4,2]."""
-
-reference = '''
-function takeBelow(nums, limit) {
-  const taken = [];
-  for (const n of nums) {
-    if (n >= limit) break;
-    taken.push(n);
-  }
-  return taken;
-}
-'''
+[1,4,2,9,3], 5 → [1,4,2]."""
 
 [[tests]]
 args = [[1, 4, 2, 9, 3], 5]
@@ -31,3 +19,31 @@ expected = []
 [[tests]]
 args = [[1, 2], 5]
 expected = [1, 2]
+
+[javascript]
+signature = "takeBelow(nums, limit)"
+reference = '''
+function takeBelow(nums, limit) {
+  const taken = [];
+  for (const n of nums) {
+    if (n >= limit) break;
+    taken.push(n);
+  }
+  return taken;
+}
+'''
+
+[purescript]
+signature = '''
+takeBelow :: Array Int -> Int -> Array Int
+takeBelow nums limit = ...'''
+reference = '''
+import Prelude
+import Data.Array (cons, uncons)
+import Data.Maybe (Maybe(..))
+
+takeBelow :: Array Int -> Int -> Array Int
+takeBelow nums limit = case uncons nums of
+  Just { head, tail } | head < limit -> cons head (takeBelow tail limit)
+  _ -> []
+'''

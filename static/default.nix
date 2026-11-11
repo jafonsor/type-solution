@@ -9,12 +9,23 @@ let
   editor = pkgs.buildNpmPackage {
     pname = "type-solution-editor";
     version = "0.1.0";
-    src = ./editor;
-    npmDepsHash = "sha256-pChH5S0y7nktUZ4jczTVS6jlyJXBDPf+o8uaXXO8HuY=";
+    # The shim also imports the Language-agnostic bundle trigger
+    # (bundle/trigger.mjs), so the source holds both folders.
+    src = pkgs.lib.fileset.toSource {
+      root = ./.;
+      fileset = pkgs.lib.fileset.unions [ ./editor ./bundle ];
+    };
+    sourceRoot = "source/editor";
+    npmDepsHash = "sha256-TThBskA08iC8TRHG4Ga/sajvuHxlLjwskOgJYGR67bs=";
     nativeBuildInputs = [ pkgs.esbuild ];
     dontNpmBuild = true;
+    # PureScript's two worker scripts (the compiler's, and the runner a fresh
+    # sandbox worker runs the tests in) are built beside the shim and served
+    # next to JavaScript's runner.js: the Checker finds them there.
     installPhase = ''
       esbuild src/editor.js --bundle --format=iife --minify --outfile=$out/editor.js
+      esbuild src/languages/purescript/compiler-worker.js --bundle --format=iife --minify --outfile=$out/purs-compiler.js
+      esbuild src/languages/purescript/sandbox.js --bundle --format=iife --minify --outfile=$out/purs-sandbox.js
     '';
   };
 
@@ -30,5 +41,7 @@ in pkgs.stdenv.mkDerivation {
     cp -r images $out
     cp -r js $out
     cp ${editor}/editor.js $out/js/editor.js
+    cp ${editor}/purs-compiler.js $out/js/purs-compiler.js
+    cp ${editor}/purs-sandbox.js $out/js/purs-sandbox.js
   '';
 }

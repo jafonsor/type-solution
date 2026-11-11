@@ -1,18 +1,7 @@
 function = "unique"
-signature = "unique(items)"
 prompt = """
 Remove repeated items from a list, keeping each item where it first \
-appears. For example, unique([1,2,2,3,1]) → [1,2,3]."""
-
-reference = '''
-function unique(items) {
-  const seen = [];
-  for (const item of items) {
-    if (!seen.includes(item)) seen.push(item);
-  }
-  return seen;
-}
-'''
+appears. For example, [1,2,2,3,1] → [1,2,3]."""
 
 [[tests]]
 args = [[1, 2, 2, 3, 1]]
@@ -25,3 +14,29 @@ expected = ["b", "a", "c"]
 [[tests]]
 args = [[4, 4, 4]]
 expected = [4]
+
+[javascript]
+signature = "unique(items)"
+reference = '''
+function unique(items) {
+  const seen = [];
+  for (const item of items) {
+    if (!seen.includes(item)) seen.push(item);
+  }
+  return seen;
+}
+'''
+
+[purescript]
+signature = '''
+unique :: forall a. Eq a => Array a -> Array a
+unique items = ...'''
+reference = '''
+import Prelude
+import Data.Array (elem, foldl, snoc)
+
+unique :: forall a. Eq a => Array a -> Array a
+unique items = foldl keep [] items
+  where
+    keep seen item = if elem item seen then seen else snoc seen item
+'''

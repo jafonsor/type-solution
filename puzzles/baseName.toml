@@ -1,18 +1,8 @@
 function = "baseName"
-signature = "baseName(path)"
 prompt = """
 Return the file name at the end of a /-separated path, without its \
 extension (from the last dot on); a name with no dot stays whole. \
-For example, baseName("/home/ada/notes.txt") → "notes"."""
-
-reference = '''
-function baseName(path) {
-  const parts = path.split('/');
-  const file = parts[parts.length - 1];
-  const dot = file.lastIndexOf('.');
-  return dot === -1 ? file : file.slice(0, dot);
-}
-'''
+For example, "/home/ada/notes.txt" → "notes"."""
 
 [[tests]]
 args = ["/home/ada/notes.txt"]
@@ -29,3 +19,32 @@ expected = "node"
 [[tests]]
 args = ["readme.md"]
 expected = "readme"
+
+[javascript]
+signature = "baseName(path)"
+reference = '''
+function baseName(path) {
+  const parts = path.split('/');
+  const file = parts[parts.length - 1];
+  const dot = file.lastIndexOf('.');
+  return dot === -1 ? file : file.slice(0, dot);
+}
+'''
+
+[purescript]
+signature = '''
+baseName :: String -> String
+baseName path = ...'''
+reference = '''
+import Prelude
+import Data.Array (last)
+import Data.Maybe (Maybe(..), fromMaybe)
+import Data.String (Pattern(..), lastIndexOf, split, take)
+
+baseName :: String -> String
+baseName path = case lastIndexOf (Pattern ".") file of
+  Just dot -> take dot file
+  Nothing -> file
+  where
+    file = fromMaybe path (last (split (Pattern "/") path))
+'''

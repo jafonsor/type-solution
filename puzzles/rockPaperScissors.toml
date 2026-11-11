@@ -1,20 +1,8 @@
 function = "rockPaperScissors"
-signature = "rockPaperScissors(a, b)"
 prompt = """
 Return "win" if move a beats move b, "lose" if b beats a, and "draw" if they \
 are the same; rock beats scissors, scissors beats paper, paper beats rock. \
-For example, rockPaperScissors("rock", "scissors") → "win"."""
-
-reference = '''
-function rockPaperScissors(a, b) {
-  if (a === b) return "draw";
-  const wins =
-    (a === "rock" && b === "scissors") ||
-    (a === "scissors" && b === "paper") ||
-    (a === "paper" && b === "rock");
-  return wins ? "win" : "lose";
-}
-'''
+For example, "rock", "scissors" → "win"."""
 
 [[tests]]
 args = ["rock", "scissors"]
@@ -35,3 +23,36 @@ expected = "lose"
 [[tests]]
 args = ["paper", "paper"]
 expected = "draw"
+
+[javascript]
+signature = "rockPaperScissors(a, b)"
+reference = '''
+function rockPaperScissors(a, b) {
+  if (a === b) return "draw";
+  const wins =
+    (a === "rock" && b === "scissors") ||
+    (a === "scissors" && b === "paper") ||
+    (a === "paper" && b === "rock");
+  return wins ? "win" : "lose";
+}
+'''
+
+[purescript]
+signature = '''
+rockPaperScissors :: String -> String -> String
+rockPaperScissors a b = ...'''
+reference = '''
+import Prelude
+
+rockPaperScissors :: String -> String -> String
+rockPaperScissors a b
+  | a == b = "draw"
+  | beats a b = "win"
+  | otherwise = "lose"
+
+beats :: String -> String -> Boolean
+beats "rock" "scissors" = true
+beats "scissors" "paper" = true
+beats "paper" "rock" = true
+beats _ _ = false
+'''

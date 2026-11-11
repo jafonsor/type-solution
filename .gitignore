@@ -25,3 +25,10 @@ prototype-reflex-wasm/dist-newstyle/
 
 # direnv
 .direnv/
+
+# gmp-free GHC experiment outputs (regenerable, see .scratch/other-languages)
+prototype-reflex-wasm/dist-native*/
+prototype-reflex-wasm/www-native*/
+
+# Claude Code research worktrees
+.claude/worktrees/

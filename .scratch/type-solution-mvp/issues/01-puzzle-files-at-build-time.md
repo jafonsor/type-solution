@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 01: Puzzles come from TOML files at build time
 
@@ -26,7 +26,7 @@ None (can start immediately).
 - **Identity is the file name**, not the function name: two Puzzles may share a function name. Runs and Personal bests key on the identity. Naming the file after the function is only a guideline.
 - Prefer `toml-parser` (pure Haskell, TOML 1.0) and parse inside the splice, so a broken file is a build error. First confirm it's in the pinned package set and builds for wasm32-wasi-ghc 9.14 (a splice reading a file was tested on that compiler; a splice using `toml-parser` wasn't). If it isn't available, embed the text and parse at startup; then the Puzzle bank check (ticket 02) is what stops a broken file.
 - TOML has no `null`; no Puzzle takes or returns `null`. Values become aeson `Value`s, because the test-runner worker compares results as JSON.
-- The Reference Solution and the tests are in the bundle (the worker needs the tests), but nothing may render either (Design Contract I1). A failed test may show its call, expected value and what the Solution returned, as it does now.
+- The Reference Solution and the tests are in the bundle (the worker needs the tests), but nothing may render either (Design Contract I1). A failed test may show its input (Language-neutral since 2026-11-11), expected value and what the Solution returned, as it does now.
 - The record's JSON key `puzzle` stays; only its content changes to the identity. fizzBuzz's old records keep matching because both names are `fizzBuzz`.
 - Puzzle choice stays fixed on the one Puzzle here; random choice is ticket 05.
 - Domain words from `CONTEXT.md`: Puzzle, Reference Solution, Run, Solution.

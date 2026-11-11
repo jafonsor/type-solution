@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 08: Most missed and Slowest lists
 

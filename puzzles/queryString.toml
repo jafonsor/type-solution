@@ -1,18 +1,8 @@
 function = "queryString"
-signature = "queryString(params)"
 prompt = """
 Build a query string from an object: each key and value joined by =, the \
 pairs joined by &, keys in alphabetical order; an empty object gives "". \
-For example, queryString({q: "cats", page: 2}) → "page=2&q=cats"."""
-
-reference = '''
-function queryString(params) {
-  return Object.keys(params)
-    .sort()
-    .map((key) => `${key}=${params[key]}`)
-    .join('&');
-}
-'''
+For example, {q: "cats", page: 2} → "page=2&q=cats"."""
 
 [[tests]]
 args = [{ q = "cats", page = 2 }]
@@ -29,3 +19,46 @@ expected = "id=7"
 [[tests]]
 args = [{}]
 expected = ""
+
+[javascript]
+signature = "queryString(params)"
+reference = '''
+function queryString(params) {
+  return Object.keys(params)
+    .sort()
+    .map((key) => `${key}=${params[key]}`)
+    .join('&');
+}
+'''
+
+[purescript]
+signature = '''
+queryString :: forall r rl. RowToList r rl => Keys rl => Record r -> String
+queryString record = ...'''
+reference = '''
+import Prelude
+import Data.String (joinWith)
+import Data.Symbol (class IsSymbol, reflectSymbol)
+import Prim.RowList (class RowToList, Cons, Nil, RowList)
+import Record.Unsafe (unsafeGet)
+import Type.Proxy (Proxy(..))
+
+class Field a where
+  field :: a -> String
+
+instance Field String where field = identity
+instance Field Int where field = show
+
+class Keys (rl :: RowList Type) where
+  pairs :: forall r. Proxy rl -> Record r -> Array String
+
+instance Keys Nil where
+  pairs _ _ = []
+
+instance (IsSymbol k, Field v, Keys rest) => Keys (Cons k v rest) where
+  pairs _ record = [key <> "=" <> field (unsafeGet key record :: v)] <> pairs (Proxy :: Proxy rest) record
+    where key = reflectSymbol (Proxy :: Proxy k)
+
+queryString :: forall r rl. RowToList r rl => Keys rl => Record r -> String
+queryString record = joinWith "&" (pairs (Proxy :: Proxy rl) record)
+'''

@@ -18,5 +18,5 @@ Built in the real app rather than as a throwaway page (the fizzBuzz Run), and ju
 
 - **Pause before checking:** 400 ms after the last edit. Each check runs in a fresh worker, stopped after 1 s.
 - **Suggestions:** none. The editor has highlighting and auto-indent, without auto-closing brackets or suggestions, and it felt right that way.
-- **Feedback while failing:** below the editor, each failed test as "`fizzBuzz(10)` should return `"Buzz"`, got `"10"`", or the syntax error, crash or timeout. No hints.
+- **Feedback while failing:** below the editor, each failed test as "`fizzBuzz(10)` should return `"Buzz"`, got `"10"`" (since 2026-11-11, owner: "`10` → `"Buzz"`, got `"10"`", Language-neutral), or the syntax error, crash or timeout. No hints.
 - **On pass:** the clock freezes and the result shows; Esc starts another Run.

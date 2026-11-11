@@ -1,18 +1,7 @@
 function = "range"
-signature = "range(start, end)"
 prompt = """
 List the whole numbers from start up to but not including end; if end is \
-not above start, return []. For example, range(2, 6) → [2,3,4,5]."""
-
-reference = '''
-function range(start, end) {
-  const nums = [];
-  for (let n = start; n < end; n++) {
-    nums.push(n);
-  }
-  return nums;
-}
-'''
+not above start, return []. For example, 2, 6 → [2,3,4,5]."""
 
 [[tests]]
 args = [2, 6]
@@ -33,3 +22,29 @@ expected = []
 [[tests]]
 args = [3, 1]
 expected = []
+
+[javascript]
+signature = "range(start, end)"
+reference = '''
+function range(start, end) {
+  const nums = [];
+  for (let n = start; n < end; n++) {
+    nums.push(n);
+  }
+  return nums;
+}
+'''
+
+[purescript]
+signature = '''
+range :: Int -> Int -> Array Int
+range start end = ...'''
+reference = '''
+import Prelude
+import Data.Array (cons)
+
+range :: Int -> Int -> Array Int
+range start end
+  | end <= start = []
+  | otherwise = cons start (range (start + 1) end)
+'''

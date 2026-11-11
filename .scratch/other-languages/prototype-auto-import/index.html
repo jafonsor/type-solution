@@ -1,0 +1,166 @@
+<!doctype html>
+<!-- PROTOTYPE (throwaway): answers ticket 08, "Auto-import in the editor".
+     Plan: three variants of how a PureScript name gets its import line, switchable with ?variant=A|B|C
+     or the bottom bar (arrows work when the editor is not focused). A hand-made popup on a textarea, not
+     CodeMirror: the question is how it feels, not the API. Nothing is saved. Static name->module table below.
+       A: list popup after 2 letters; Tab or Enter accepts the highlighted name.
+       B: one quiet suggestion after 1 letter, shown as a ghost word in the line; Tab accepts.
+       C: no popup; typing a known name and then a separator adds its import when the word ends.
+       D: mix of A and B-less: list popup after 2 letters like A, but Tab/Enter only adds the import line; the player still types the whole name.
+     In all: Tab with no popup indents two spaces; Esc dismisses; the Language bar sits under the editor. -->
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE auto-import</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7;--focus:#0071e3;--good:#1e7d32;--editor-bg:#fbfbfd;--hl:#0071e322}
+@media(prefers-color-scheme:dark){:root{--bg:#1d1d1f;--fg:#f5f5f7;--muted:#a1a1a6;--line:#424245;--focus:#2997ff;--good:#81c995;--editor-bg:#242426;--hl:#2997ff33}}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+main{max-width:46rem;margin:3rem auto;padding:0 1rem 7rem}
+.signature{font:600 1.2rem ui-monospace,monospace;margin:0 0 .25rem;white-space:pre}
+.prompt{color:var(--muted);margin:0 0 1rem}
+.wrap{position:relative}
+textarea,.mirror{width:100%;box-sizing:border-box;min-height:13rem;font:15px/1.5 ui-monospace,monospace;padding:.6rem;border:1px solid var(--line);white-space:pre-wrap;word-wrap:break-word;tab-size:2}
+textarea{display:block;background:var(--editor-bg);color:var(--fg);border-radius:6px 6px 0 0;resize:vertical;position:relative;z-index:1}
+textarea:focus{outline:2px solid var(--focus);outline-offset:-1px}
+.mirror{position:absolute;visibility:hidden;top:0;left:0;height:auto}
+.pop{position:absolute;z-index:3;background:var(--bg);border:1px solid var(--line);border-radius:6px;box-shadow:0 2px 10px #0004;font:13px/1.4 ui-monospace,monospace;min-width:15rem;overflow:hidden}
+.pop div{padding:.15rem .6rem;display:flex;justify-content:space-between;gap:1.5rem}
+.pop div.sel{background:var(--hl)}
+.pop small{color:var(--muted)}
+.pop .foot{color:var(--muted);font-size:11px;border-top:1px solid var(--line);justify-content:flex-start}
+.ghost{position:absolute;z-index:3;pointer-events:none;color:var(--muted);font:15px/1.5 ui-monospace,monospace;white-space:pre}
+.ghost kbd{font:11px system-ui;border:1px solid var(--line);border-radius:3px;padding:0 .25rem;margin-left:.4rem;background:var(--bg)}
+.editorbar{display:flex;align-items:center;gap:.6rem;background:var(--editor-bg);border:1px solid var(--line);border-top:0;border-radius:0 0 6px 6px;padding:.1rem .5rem;font-size:.85rem;color:var(--muted)}
+.editorbar select{border:0;background:none;color:var(--fg);font:inherit;padding:.1rem .3rem}
+.counts{margin:.6rem 0;font-variant-numeric:tabular-nums;color:var(--muted);font-size:.9rem}
+.counts b{color:var(--fg)}
+.flash{color:var(--good);min-height:1.5rem;font-size:.9rem}
+.hint{color:var(--muted);font-size:.9rem}
+.bar{position:fixed;bottom:.8rem;left:50%;transform:translateX(-50%);background:#111;color:#fff;border-radius:99px;padding:.3rem .5rem;display:flex;gap:.6rem;align-items:center;box-shadow:0 2px 10px #0007;z-index:9}
+.bar button{background:none;color:#fff;border:0;font:inherit;cursor:pointer}
+button.reset{font:inherit;color:var(--fg);background:var(--editor-bg);border:1px solid var(--line);border-radius:6px;padding:.1rem .5rem;cursor:pointer}
+</style>
+<main>
+ <header>
+  <p class="signature" id="sig">firstTwo :: Array Int -> Array Int
+firstTwo xs = ...</p>
+  <p class="prompt">Return the first two elements of the array. Try typing <code>take 2 xs</code>, then something with <code>drop</code> (same module, so the import line must merge), then <code>toUpper</code> or <code>fromMaybe</code> (other modules).</p>
+ </header>
+ <div class="wrap" id="wrap">
+  <textarea id="ed" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Start typing…"></textarea>
+  <div class="mirror" id="mirror" aria-hidden="true"></div>
+ </div>
+ <div class="editorbar"><span>?</span><span style="flex:1"></span><span>Alt+L</span><select aria-label="Language"><option>PureScript</option><option>JavaScript</option></select></div>
+ <div class="counts" id="counts"></div>
+ <div class="flash" id="flash"></div>
+ <button class="reset" id="reset">Clear editor</button>
+ <p class="hint" id="kbhint"></p>
+</main>
+<div class="bar"><button id="prev">←</button><span id="vlabel"></span><button id="next">→</button></div>
+<script>
+// name -> module (static table; the real one would be generated from the bank). "Maybe(..)"-style entries skipped.
+const TABLE={take:"Data.Array",drop:"Data.Array",filter:"Data.Array",reverse:"Data.Array",length:"Data.Array",head:"Data.Array",tail:"Data.Array",
+ zip:"Data.Array",sort:"Data.Array",sortBy:"Data.Array",replicate:"Data.Array",null:"Data.Array",foldl:"Data.Foldable",foldr:"Data.Foldable",
+ sum:"Data.Foldable",toUpper:"Data.String",trim:"Data.String",split:"Data.String.Common",joinWith:"Data.String.Common",
+ fromMaybe:"Data.Maybe",Just:"Data.Maybe",Nothing:"Data.Maybe",lookup:"Data.Map",insert:"Data.Map",fst:"Data.Tuple",snd:"Data.Tuple",
+ map:"Prelude",show:"Prelude",not:"Prelude",max:"Prelude",min:"Prelude"};
+// Prelude is implicit-ish in a Puzzle (always imported), so those names need no import line.
+const NAMES=Object.keys(TABLE).sort();
+const V={D:"Popup adds the import only; you type the name",A:"List popup after 2 letters",B:"One ghost suggestion after 1 letter",C:"No popup, import on word end"};
+const $=id=>document.getElementById(id),ed=$("ed");
+let variant=new URLSearchParams(location.search).get("variant")||"A",pop=null,typedTotal=0,insertedTotal=0;
+
+// --- import block handling -------------------------------------------------------------------------
+const IMPORT=/^import\s+([\w.]+)(?:\s*\(([^)]*)\))?\s*$/;
+function parse(text){const lines=text.split("\n");let n=0;while(n<lines.length&&IMPORT.test(lines[n]))n++;return{lines,n}}
+function addImport(text,name){ // returns {text, delta(chars added before the old top), note}
+  const mod=TABLE[name];if(mod==="Prelude")return{text,delta:0,note:null};
+  const {lines,n}=parse(text);
+  for(let i=0;i<n;i++){const m=lines[i].match(IMPORT);
+    if(m[1]===mod&&m[2]!==undefined){
+      const names=m[2].split(",").map(s=>s.trim()).filter(Boolean);
+      if(names.includes(name))return{text,delta:0,note:`${name} already imported from ${mod}`};
+      names.push(name);const nl=`import ${mod} (${names.join(", ")})`;
+      const old=lines[i];lines[i]=nl;return{text:lines.join("\n"),delta:nl.length-old.length,note:`merged into: ${nl}`,at:i}}}
+  const nl=`import ${mod} (${name})`;
+  // new line goes after the last import, or at the very top with a blank line after it when there were none
+  if(n===0){return{text:nl+"\n\n"+text,delta:nl.length+2,note:`added: ${nl}`,at:0}}
+  lines.splice(n,0,nl);
+  return{text:lines.join("\n"),delta:nl.length+1,note:`added: ${nl}`,at:n}}
+
+// --- word under the caret ---------------------------------------------------------------------------
+function wordAt(){const p=ed.selectionStart,t=ed.value;let a=p;while(a>0&&/[\w']/.test(t[a-1]))a--;return{from:a,to:p,word:t.slice(a,p)}}
+function inImportLine(from){const t=ed.value,ls=t.lastIndexOf("\n",from-1)+1;return /^import\b/.test(t.slice(ls,from+1))}
+function accept(name,from,to){ // replace the typed prefix by name, then fix the imports; the caret stays after the name
+  const t=ed.value,withName=t.slice(0,from)+name+t.slice(to),caret=from+name.length;
+  insertedTotal+=name.length-(to-from);
+  const r=addImport(withName,name);
+  ed.value=r.text;const c=caret+(r.at!==undefined&&r.at*0+r.delta>=0&&importsAbove(r,from)?r.delta:0);
+  ed.setSelectionRange(c,c);
+  insertedTotal+=r.delta;flash(r.note?`${name} → ${r.note}`:`${name} (Prelude, no import needed)`);
+  close();update()}
+function acceptImport(name){ // D: add only the import line; the typed word is left alone, the caret shifts down by what was added above
+  const r=addImport(ed.value,name),c=ed.selectionStart+r.delta;ed.value=r.text;ed.setSelectionRange(c,c);
+  insertedTotal+=r.delta;flash(`${name} → ${r.note}`);close();update()}
+// every import edit happens above the caret (imports are at the top), so the caret always shifts by delta
+function importsAbove(){return true}
+
+// --- popup ---------------------------------------------------------------------------------------
+function caretXY(){const m=$("mirror"),p=ed.selectionStart;
+  m.textContent=ed.value.slice(0,p);const s=document.createElement("span");s.textContent="​";m.append(s);
+  m.style.width=ed.clientWidth+"px";
+  return{x:s.offsetLeft,y:s.offsetTop-ed.scrollTop}}
+function imported(name){const {lines,n}=parse(ed.value);for(let i=0;i<n;i++){const m=lines[i].match(IMPORT);
+  if(m[1]===TABLE[name]&&m[2]!==undefined&&m[2].split(",").map(s=>s.trim()).includes(name))return true}return false}
+function matches(prefix,min){if(prefix.length<min)return[];const l=prefix.toLowerCase();
+  if(variant==="D")return NAMES.filter(n=>n.toLowerCase().startsWith(l)&&TABLE[n]!=="Prelude"&&!imported(n)).slice(0,6);
+  return NAMES.filter(n=>n.toLowerCase().startsWith(l)&&n!==prefix).slice(0,6)}
+function close(){pop=null;for(const e of document.querySelectorAll(".pop,.ghost"))e.remove()}
+function open(list,from,to){
+  close();if(!list.length)return;pop={list,i:0,from,to};const {x,y}=caretXY();
+  if(variant==="A"||variant==="D"){const d=document.createElement("div");d.className="pop";d.style.left=Math.min(x,ed.clientWidth-240)+"px";d.style.top=(y+24)+"px";
+    list.forEach((n,k)=>{const r=document.createElement("div");r.className=k===pop.i?"sel":"";r.innerHTML=`<span>${n}</span><small>${TABLE[n]==="Prelude"?"Prelude":TABLE[n]}</small>`;
+      r.onmousedown=e=>{e.preventDefault();variant==="D"?acceptImport(n):accept(n,from,to)};d.append(r)});
+    const f=document.createElement("div");f.className="foot";f.textContent=variant==="D"?"Tab adds the import · you type the name · Esc closes":"Tab accepts · Esc closes · ↑↓ choose";d.append(f);$("wrap").append(d)}
+  else{const g=document.createElement("div");g.className="ghost";g.style.left=(x+ed.style.paddingLeft*0+9)+"px";g.style.top=(y+10)+"px";
+    const n=list[0];g.innerHTML=`${n.slice(to-from)}<kbd>Tab</kbd><span style="font-size:11px"> ${TABLE[n]==="Prelude"?"":"+ import "+TABLE[n]}</span>`;
+    $("wrap").append(g)}}
+function update(){
+  if(variant==="C"){close();count();return}
+  const {from,to,word}=wordAt();
+  if(inImportLine(from)){close();count();return}
+  open(matches(word,variant==="B"?1:2),from,to);count()}
+function count(){
+  const {lines,n}=parse(ed.value);const body=lines.slice(n).join("\n").trim();
+  $("counts").innerHTML=`Counted: <b>${body?body.split("\n").length:0}</b> lines, <b>${body.length}</b> characters (imports excluded) · typed by hand: <b>${typedTotal}</b> keys · inserted by autocomplete, not counted: <b>${insertedTotal}</b> chars`}
+let ft;function flash(m){$("flash").textContent=m;clearTimeout(ft);ft=setTimeout(()=>$("flash").textContent="",4000)}
+
+// --- events ---------------------------------------------------------------------------------------
+ed.addEventListener("input",e=>{
+  if(e.inputType&&e.inputType.startsWith("insert"))typedTotal+=(e.data||"\n").length;
+  if(variant==="C"&&e.data&&/[^\w']/.test(e.data)){ // separator typed: look at the word just before it
+    const p=ed.selectionStart-1,t=ed.value;let a=p;while(a>0&&/[\w']/.test(t[a-1]))a--;const w=t.slice(a,p);
+    if(TABLE[w]&&!inImportLine(a)){const r=addImport(t,w);if(r.text!==t){const c=ed.selectionStart+r.delta;ed.value=r.text;ed.setSelectionRange(c,c);insertedTotal+=r.delta;flash(`${w} → ${r.note}`)}}}
+  update()});
+ed.addEventListener("keydown",e=>{
+  if(e.altKey)return;
+  if(e.key==="Tab"&&!e.shiftKey){e.preventDefault();
+    if(pop){const n=pop.list[pop.i];variant==="D"?acceptImport(n):accept(n,pop.from,pop.to)}
+    else{const p=ed.selectionStart;ed.setRangeText("  ",p,ed.selectionEnd,"end");typedTotal+=2;update()}}
+  else if(pop&&(variant==="A"||variant==="D")&&e.key==="Enter"){e.preventDefault();variant==="D"?acceptImport(pop.list[pop.i]):accept(pop.list[pop.i],pop.from,pop.to)}
+  else if(pop&&(variant==="A"||variant==="D")&&(e.key==="ArrowDown"||e.key==="ArrowUp")){e.preventDefault();
+    pop.i=(pop.i+(e.key==="ArrowDown"?1:pop.list.length-1))%pop.list.length;
+    [...document.querySelectorAll(".pop>div:not(.foot)")].forEach((r,k)=>r.className=k===pop.i?"sel":"")}
+  else if(e.key==="Escape"&&pop){e.preventDefault();close()}});
+ed.addEventListener("click",()=>close());
+ed.addEventListener("blur",()=>close());
+$("reset").onclick=()=>{ed.value="";typedTotal=insertedTotal=0;close();count();ed.focus()};
+function cyc(d){variant=["A","B","C","D"][(["A","B","C","D"].indexOf(variant)+d+4)%4];history.replaceState(0,"","?variant="+variant);render()}
+function render(){$("vlabel").textContent=`${variant} (${V[variant]})`;close();count();
+ $("kbhint").textContent={A:"Type 'dr' or 'ta': a list pops up. Tab or Enter accepts, ↑↓ choose, Esc closes. With no popup, Tab indents.",
+  B:"Type 'd': a grey word appears after the caret with the module it will import. Tab accepts; keep typing to ignore it.",
+  D:"Type 'dr': a list pops up showing the module. Tab or Enter adds only the import line; keep typing the whole name yourself. Names already imported (or from Prelude) are not offered. With no popup, Tab indents.",
+  C:"Type 'take ' or 'drop ': nothing appears until you press space (or any separator), then the import line is added or merged."}[variant]}
+$("prev").onclick=()=>cyc(-1);$("next").onclick=()=>cyc(1);
+addEventListener("keydown",e=>{if(document.activeElement!==ed){if(e.key==="ArrowLeft")cyc(-1);if(e.key==="ArrowRight")cyc(1)}});
+render();
+</script>

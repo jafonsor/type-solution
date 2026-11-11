@@ -1,17 +1,8 @@
 function = "abbreviate"
-signature = "abbreviate(word)"
 prompt = """
 Shorten a word to its first letter, the number of letters between the first \
 and the last, and its last letter; a word of three letters or fewer stays as \
-it is. For example, abbreviate("internationalization") → "i18n"."""
-
-reference = '''
-function abbreviate(word) {
-  if (word.length <= 3) return word;
-  const middle = word.length - 2;
-  return `${word[0]}${middle}${word[word.length - 1]}`;
-}
-'''
+it is. For example, "internationalization" → "i18n"."""
 
 [[tests]]
 args = ["internationalization"]
@@ -28,3 +19,30 @@ expected = "f2r"
 [[tests]]
 args = ["cat"]
 expected = "cat"
+
+[javascript]
+signature = "abbreviate(word)"
+reference = '''
+function abbreviate(word) {
+  if (word.length <= 3) return word;
+  const middle = word.length - 2;
+  return `${word[0]}${middle}${word[word.length - 1]}`;
+}
+'''
+
+[purescript]
+signature = '''
+abbreviate :: String -> String
+abbreviate word = ...'''
+reference = '''
+import Prelude
+import Data.String (drop, length, take)
+
+abbreviate :: String -> String
+abbreviate word
+  | length word <= 3 = word
+  | otherwise = first <> show (length word - 2) <> last
+  where
+    first = take 1 word
+    last = drop (length word - 1) word
+'''

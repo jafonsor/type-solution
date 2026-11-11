@@ -1,16 +1,7 @@
 function = "rotate"
-signature = "rotate(items, k)"
 prompt = """
 Move the first k items of a list to its end, where k is from 0 up to the \
-list's length. For example, rotate([1,2,3,4,5], 2) → [3,4,5,1,2]."""
-
-reference = '''
-function rotate(items, k) {
-  const front = items.slice(0, k);
-  const back = items.slice(k);
-  return [...back, ...front];
-}
-'''
+list's length. For example, [1,2,3,4,5], 2 → [3,4,5,1,2]."""
 
 [[tests]]
 args = [[1, 2, 3, 4, 5], 2]
@@ -27,3 +18,28 @@ expected = [1, 2, 3]
 [[tests]]
 args = [[1, 2, 3], 3]
 expected = [1, 2, 3]
+
+[javascript]
+signature = "rotate(items, k)"
+reference = '''
+function rotate(items, k) {
+  const front = items.slice(0, k);
+  const back = items.slice(k);
+  return [...back, ...front];
+}
+'''
+
+[purescript]
+signature = '''
+rotate :: forall a. Array a -> Int -> Array a
+rotate items k = ...'''
+reference = '''
+import Prelude
+import Data.Array (drop, take)
+
+rotate :: forall a. Array a -> Int -> Array a
+rotate items k = back <> front
+  where
+    front = take k items
+    back = drop k items
+'''

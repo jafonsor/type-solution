@@ -1,18 +1,7 @@
 function = "grid"
-signature = "grid(rows, cols, value)"
 prompt = """
 Build a list of rows lists, each holding cols copies of the value. \
-For example, grid(2, 3, 0) → [[0,0,0],[0,0,0]]."""
-
-reference = '''
-function grid(rows, cols, value) {
-  const result = [];
-  for (let r = 0; r < rows; r++) {
-    result.push(new Array(cols).fill(value));
-  }
-  return result;
-}
-'''
+For example, 2, 3, 0 → [[0,0,0],[0,0,0]]."""
 
 [[tests]]
 args = [2, 3, 0]
@@ -25,3 +14,29 @@ expected = [["x", "x"]]
 [[tests]]
 args = [3, 1, true]
 expected = [[true], [true], [true]]
+
+[javascript]
+signature = "grid(rows, cols, value)"
+reference = '''
+function grid(rows, cols, value) {
+  const result = [];
+  for (let r = 0; r < rows; r++) {
+    result.push(new Array(cols).fill(value));
+  }
+  return result;
+}
+'''
+
+[purescript]
+signature = '''
+grid :: forall a. Int -> Int -> a -> Array (Array a)
+grid rows cols value = ...'''
+reference = '''
+import Prelude
+import Data.Array (replicate)
+
+grid :: forall a. Int -> Int -> a -> Array (Array a)
+grid rows cols value = replicate rows row
+  where
+    row = replicate cols value
+'''

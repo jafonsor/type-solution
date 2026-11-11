@@ -1,19 +1,8 @@
 function = "withDefaults"
-signature = "withDefaults(options, defaults)"
 prompt = """
 Return a new object with every key of defaults and of options; where both \
 have a key, the value from options wins. For example, \
-withDefaults({size: 2}, {size: 1, color: "red"}) → {size: 2, color: "red"}."""
-
-reference = '''
-function withDefaults(options, defaults) {
-  const result = { ...defaults };
-  for (const key in options) {
-    result[key] = options[key];
-  }
-  return result;
-}
-'''
+{size: 2}, {size: 1, color: "red"} → {size: 2, color: "red"}."""
 
 [[tests]]
 args = [{ size = 2 }, { size = 1, color = "red" }]
@@ -26,3 +15,29 @@ expected = { mute = true, volume = 5 }
 [[tests]]
 args = [{}, { theme = "dark" }]
 expected = { theme = "dark" }
+
+[javascript]
+signature = "withDefaults(options, defaults)"
+reference = '''
+function withDefaults(options, defaults) {
+  const result = { ...defaults };
+  for (const key in options) {
+    result[key] = options[key];
+  }
+  return result;
+}
+'''
+
+[purescript]
+signature = '''
+withDefaults :: forall a b c d. Union a b c => Nub c d => Record a -> Record b -> Record d
+withDefaults options defaults = ...'''
+reference = '''
+import Prim.Row (class Nub, class Union)
+import Record (merge)
+
+withDefaults :: forall a b c d. Union a b c => Nub c d => Record a -> Record b -> Record d
+withDefaults options defaults = result
+  where
+    result = merge options defaults
+'''

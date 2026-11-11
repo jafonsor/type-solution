@@ -1,6 +1,12 @@
 function = "pair"
-signature = "pair(x, y)"
 prompt = "Return {b: x, a: y}."
+
+[[tests]]
+args = [1, 2]
+expected = { a = 2, b = 1 }
+
+[javascript]
+signature = "pair(x, y)"
 reference = '''
 function pair(x, y) {
   // Builds the object with its keys out of sorted order on purpose.
@@ -9,6 +15,16 @@ function pair(x, y) {
 }
 '''
 
-[[tests]]
-args = [1, 2]
-expected = { a = 2, b = 1 }
+[purescript]
+signature = '''
+pair :: Int -> Int -> Int
+pair x y = ...'''
+reference = '''
+import Prelude
+
+pair :: Int -> Int -> Int
+pair x y = one
+  where
+    -- Never run by the bank check, which compiles no PureScript: only this text is read.
+    one = x
+'''

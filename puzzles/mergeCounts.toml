@@ -1,19 +1,8 @@
 function = "mergeCounts"
-signature = "mergeCounts(a, b)"
 prompt = """
 Add two objects of counts together key by key; a key found in only one of \
-them keeps its count. For example, mergeCounts({apple: 2, pear: 1}, \
-{apple: 3, fig: 4}) → {apple: 5, pear: 1, fig: 4}."""
-
-reference = '''
-function mergeCounts(a, b) {
-  const total = { ...a };
-  for (const key in b) {
-    total[key] = (total[key] || 0) + b[key];
-  }
-  return total;
-}
-'''
+them keeps its count. For example, {apple: 2, pear: 1}, \
+{apple: 3, fig: 4} → {apple: 5, pear: 1, fig: 4}."""
 
 [[tests]]
 args = [{ apple = 2, pear = 1 }, { apple = 3, fig = 4 }]
@@ -30,3 +19,29 @@ expected = { kiwi = 6 }
 [[tests]]
 args = [{ a = 1 }, {}]
 expected = { a = 1 }
+
+[javascript]
+signature = "mergeCounts(a, b)"
+reference = '''
+function mergeCounts(a, b) {
+  const total = { ...a };
+  for (const key in b) {
+    total[key] = (total[key] || 0) + b[key];
+  }
+  return total;
+}
+'''
+
+[purescript]
+signature = '''
+mergeCounts :: Object Int -> Object Int -> Object Int
+mergeCounts a b = ...'''
+reference = '''
+import Prelude
+import Foreign.Object (Object, unionWith)
+
+mergeCounts :: Object Int -> Object Int -> Object Int
+mergeCounts a b = unionWith plus a b
+  where
+    plus x y = x + y
+'''

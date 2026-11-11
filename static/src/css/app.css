@@ -27,12 +27,24 @@ main.run { max-width: 46rem; margin: 3rem auto; padding: 0 1rem 6rem; }
 .puzzle .signature { font: 600 1.4rem ui-monospace, monospace; margin: 0 0 .25rem; }
 .puzzle .prompt { color: var(--muted); margin: 0 0 1.25rem; }
 .editor .cm-editor { border: 1px solid var(--line); border-radius: 6px; min-height: 12rem; font-size: 15px; }
+.editor .cm-editor { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .editor .cm-editor.cm-focused { outline: 2px solid var(--focus); outline-offset: -1px; }
 .status { display: flex; gap: 1rem; margin: .75rem 0; color: var(--muted); }
 .status .clock { font-variant-numeric: tabular-nums; min-width: 4rem; color: var(--fg); }
+/* The phase is one line: a long compile error is cut, and hovering it shows
+   every error in full. */
+.status .phase { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.status .phase[title] { cursor: help; }
+.status .retry {
+  font: inherit; color: var(--fg); background: var(--editor-bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 0 .6rem; cursor: pointer;
+}
+.status .retry:hover { border-color: var(--muted); }
 .feedback .failure { color: var(--bad); font-size: .95rem; margin: .25rem 0; }
 .feedback code { font: .9rem ui-monospace, monospace; }
-.menu { display: flex; gap: .5rem; margin: 0 0 .75rem; }
+.menu { display: flex; align-items: center; gap: .5rem; margin: 0 0 .75rem; }
+.menu .option { display: inline-flex; align-items: center; gap: .4rem; margin-left: .5rem; color: var(--muted); cursor: pointer; }
+.menu .option:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
 .menu[hidden] { display: none; }
 .menu button {
   display: inline-flex; align-items: center; justify-content: center;
@@ -57,3 +69,38 @@ main.run { max-width: 46rem; margin: 3rem auto; padding: 0 1rem 6rem; }
   font: 600 1rem/1.4rem ui-monospace, monospace; color: var(--fg);
   background: var(--editor-bg); border: 1px solid var(--line); border-radius: 4px;
 }
+/* Signatures can have more than one line (PureScript's has two). */
+.puzzle .signature { white-space: pre-wrap; }
+/* The thin bar attached under the editor: the Language dropdown at its
+   right edge. */
+.editor-bar {
+  display: flex; justify-content: flex-end; align-items: center; gap: .6rem;
+  margin-top: -1px; padding: .1rem .4rem; font-size: .85rem;
+  background: var(--editor-bg); border: 1px solid var(--line); border-top: 0; border-radius: 0 0 6px 6px;
+}
+.editor-bar .hint { color: var(--muted); }
+/* The "?" that shows the Reference Solution on hover (ADR 0001). The tooltip
+   opens upward over the editor, right-aligned with the "?", and stays open
+   while the mouse is over it so it can be read and selected. */
+.reference-hint {
+  position: relative; margin-right: auto; color: var(--muted); cursor: help;
+  width: 1.2rem; height: 1.2rem; line-height: 1.2rem; text-align: center;
+  border: 1px solid var(--line); border-radius: 50%; font-size: .75rem;
+}
+.reference-hint:hover { color: var(--fg); border-color: var(--muted); }
+.reference-tip {
+  display: none; position: absolute; left: 0; bottom: 100%; z-index: 10;
+  margin: 0 0 .25rem; padding: .5rem .75rem; text-align: left; cursor: text;
+  min-width: 14rem; max-width: min(40rem, 90vw); max-height: 20rem; overflow: auto;
+  font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--fg);
+  background: var(--editor-bg); border: 1px solid var(--muted); border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .25);
+}
+.reference-hint:hover .reference-tip { display: block; }
+.editor-bar select {
+  font: inherit; color: var(--fg); background: none; border: 0; border-radius: 4px;
+  padding: .1rem .3rem; cursor: pointer;
+}
+.editor-bar select:hover:not(:disabled) { background: var(--line); }
+.editor-bar select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.editor-bar select:disabled { color: var(--muted); cursor: default; }

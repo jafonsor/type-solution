@@ -1,19 +1,7 @@
 function = "digitSum"
-signature = "digitSum(n)"
 prompt = """
 Add up the digits of a whole number that is zero or more. For example, \
-digitSum(472) → 13, and digitSum(0) → 0."""
-
-reference = '''
-function digitSum(n) {
-  let total = 0;
-  while (n > 0) {
-    total += n % 10;
-    n = Math.floor(n / 10);
-  }
-  return total;
-}
-'''
+472 → 13, and 0 → 0."""
 
 [[tests]]
 args = [472]
@@ -30,3 +18,32 @@ expected = 5
 [[tests]]
 args = [0]
 expected = 0
+
+[javascript]
+signature = "digitSum(n)"
+reference = '''
+function digitSum(n) {
+  let total = 0;
+  while (n > 0) {
+    total += n % 10;
+    n = Math.floor(n / 10);
+  }
+  return total;
+}
+'''
+
+[purescript]
+signature = '''
+digitSum :: Int -> Int
+digitSum n = ...'''
+reference = '''
+import Prelude
+import Data.Enum (fromEnum)
+import Data.Foldable (sum)
+import Data.String.CodeUnits (toCharArray)
+
+digitSum :: Int -> Int
+digitSum n = sum $ map digit $ toCharArray $ show n
+  where
+    digit c = fromEnum c - fromEnum '0'
+'''

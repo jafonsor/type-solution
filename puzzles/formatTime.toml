@@ -1,16 +1,7 @@
 function = "formatTime"
-signature = "formatTime(seconds)"
 prompt = """
 Format a whole number of seconds as minutes and seconds, with the seconds \
-always two digits. For example, formatTime(125) → "2:05"."""
-
-reference = '''
-function formatTime(seconds) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${m}:${s < 10 ? "0" : ""}${s}`;
-}
-'''
+always two digits. For example, 125 → "2:05"."""
 
 [[tests]]
 args = [125]
@@ -23,3 +14,27 @@ expected = "0:59"
 [[tests]]
 args = [600]
 expected = "10:00"
+
+[javascript]
+signature = "formatTime(seconds)"
+reference = '''
+function formatTime(seconds) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+}
+'''
+
+[purescript]
+signature = '''
+formatTime :: Int -> String
+formatTime seconds = ...'''
+reference = '''
+import Prelude
+
+formatTime :: Int -> String
+formatTime seconds = show clock.minutes <> ":" <> pad clock.rest
+  where
+    clock = { minutes: seconds `div` 60, rest: seconds `mod` 60 }
+    pad s = if s < 10 then "0" <> show s else show s
+'''

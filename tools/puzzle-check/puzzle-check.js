@@ -2,26 +2,40 @@
 //   - reads the file with the same rules as the build (Common.Puzzle.parsePuzzle),
 //   - runs the Reference Solution against the Puzzle's tests through the
 //     browser's own test-runner script (static/src/js/runner.js), unchanged,
-//   - checks the Reference Solution's length,
+//   - checks every Language's Reference Solution's length and, for a Language
+//     with imports, its import lines,
+//   - lints the prompt for Language-specific call syntax,
 // and reports how often each target symbol appears across all Reference
-// Solutions (a report only, never a failure).
+// Solutions, per Language (a report only, never a failure).
+// The Languages, with their limits and symbols, are read from the repo's
+// languages/<name>/ folders (languages.js); nothing here names one.
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, extname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Worker } from "node:worker_threads";
 import { parse as parseToml } from "smol-toml";
+import { defaultLanguages, languageNamed, loadLanguages } from "./languages.js";
+import { importLint } from "./purs-imports.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const defaultPuzzlesDir = resolve(here, "../../puzzles");
 export const defaultRunnerPath = resolve(here, "../../static/src/js/runner.js");
 
-// Like the browser's check timeout (frontend/src/Frontend/Run.hs, checkTimeout).
-export const timeoutMs = 1000;
+// The JavaScript check's timeout, from languages/javascript/language.json (like
+// the browser's, frontend/src/Frontend/Run.hs, checkTimeout).
+export const timeoutMs = languageNamed("javascript").timeouts.runMs;
 
 // * Reading a Puzzle file
 
-const puzzleKeys = ["function", "signature", "prompt", "reference", "tests"];
+const puzzleKeys = ["function", "prompt", "tests"];
+// Each Language table holds exactly `signature` and `reference`.
+const languageKeys = ["signature", "reference"];
 const testKeys = ["args", "expected"];
+
+// A Language table text that holds no code: empty, or only blank lines and
+// `--` / `//` comments (the PureScript placeholder, "-- placeholder until
+// ticket 24", is one).
+export const isPlaceholder = (text) => text.split(/\r?\n/).every((l) => /^\s*(--.*|\/\/.*)?$/.test(l));
 
 const isTable = (v) =>
   typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Date);
@@ -46,20 +60,43 @@ function jsonProblems(v, where) {
 }
 
 // Reads a Puzzle file's text. Returns {puzzle} or {problems: [message]}.
-// Matches the build's rules: the five keys are required, no other key is
-// allowed, the four texts are strings, `tests` is a list of tables each with
+// Matches the build's rules: `function`, `prompt`, `tests` and a table per
+// Language (one per languages/<name>/ folder) are required, no other key is allowed, the texts are strings, `tests` is a list of tables each with
 // exactly `args` (a list) and `expected`, all JSON values. Stricter than the
 // build in one way: `tests` must not be empty (a Puzzle nobody can fail
 // proves nothing).
-export function readPuzzle(identity, text) {
+export function readPuzzle(identity, text, languages = defaultLanguages) {
   let doc;
   try {
     doc = parseToml(text);
   } catch (err) {
     return { problems: [String(err.message ?? err).trim()] };
   }
-  const problems = keyProblems(doc, puzzleKeys, "<top-level>");
-  for (const k of ["function", "signature", "prompt", "reference"]) {
+  // Every Puzzle has a Solution in every Language (.scratch/other-languages/spec.md,
+  // L4): a table per Language, each with `signature` and `reference`. Like the
+  // build's parser (Puzzle.hs), a missing table, an unknown one or a key
+  // outside the two is an error.
+  const names = languages.map((l) => l.name);
+  const tables = Object.fromEntries(names.map((l) => [l, doc[l]]));
+  const rest = Object.fromEntries(Object.entries(doc).filter(([k]) => !names.includes(k)));
+  const problems = keyProblems(rest, puzzleKeys, "<top-level>");
+  for (const language of names) {
+    const table = tables[language];
+    if (table === undefined) {
+      problems.push(`missing table: [${language}] (every Puzzle needs a Solution in every Language)`);
+    } else if (!isTable(table)) {
+      problems.push(`${language} must be a table with signature and reference`);
+    } else {
+      problems.push(...keyProblems(table, languageKeys, `[${language}]`));
+      for (const k of languageKeys) {
+        if (k in table && typeof table[k] !== "string") problems.push(`${language}.${k} must be a string`);
+        else if (k in table && isPlaceholder(table[k])) {
+          problems.push(`${language}.${k} is a placeholder or empty (every Puzzle needs a real Solution in every Language)`);
+        }
+      }
+    }
+  }
+  for (const k of ["function", "prompt"]) {
     if (k in doc && typeof doc[k] !== "string") problems.push(`${k} must be a string`);
   }
   if ("tests" in doc) {
@@ -82,21 +119,30 @@ export function readPuzzle(identity, text) {
     }
   }
   if (problems.length > 0) return { problems };
+  // `solutions` has one {signature, reference} per Language; `signature` and
+  // `reference` are the JavaScript ones, which the browser's runner takes.
+  const solutions = Object.fromEntries(names.map((l) => [l, { signature: tables[l].signature, reference: tables[l].reference }]));
   return {
     puzzle: {
       identity,
       function: doc.function,
-      signature: doc.signature,
+      signature: solutions.javascript?.signature,
       prompt: doc.prompt,
-      reference: doc.reference,
+      reference: solutions.javascript?.reference,
       tests: doc.tests.map((t) => ({ args: t.args, expected: t.expected })),
+      solutions,
     },
   };
 }
 
 // * Length
 
-export const lengthRule = { minLines: 4, maxLines: 12, minChars: 100, maxChars: 350 };
+// The part of a Reference Solution the player types: all of it, but the
+// import lines for a Language that has them.
+export const typedCode = (reference, language = languageNamed("javascript")) =>
+  language.importLine
+    ? reference.split(/\r?\n/).filter((l) => !language.importLine.test(l)).join("\n")
+    : reference;
 
 // How long a Reference Solution is, as the player types it. Each line has its
 // leading whitespace (spaces, tabs) removed, since the editor auto-indents;
@@ -104,29 +150,56 @@ export const lengthRule = { minLines: 4, maxLines: 12, minChars: 100, maxChars: 
 // `chars` is the number of characters (Unicode code points) on them. Line
 // breaks are not characters here: they are counted by `lines`. Trailing
 // whitespace on a line is counted, as the rule removes only leading
-// whitespace.
-export function referenceLength(reference) {
-  const kept = reference
+// whitespace. Imports are excluded for Languages that have them.
+export function referenceLength(reference, language = languageNamed("javascript")) {
+  const kept = typedCode(reference, language)
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s+/, ""))
     .filter((line) => line !== "");
   return { lines: kept.length, chars: kept.reduce((n, line) => n + [...line].length, 0) };
 }
 
-export function lengthProblems(reference) {
-  const { lines, chars } = referenceLength(reference);
-  const r = lengthRule;
+// The limits are the Language's own, from its language.json.
+export function lengthProblems(reference, language = languageNamed("javascript")) {
+  const { lines, chars } = referenceLength(reference, language);
+  const r = language.limits;
+  const who = `${language.title} Reference Solution`;
   const problems = [];
   if (lines < r.minLines || lines > r.maxLines) {
-    problems.push(`Reference Solution has ${lines} non-blank lines; it must have ${r.minLines}–${r.maxLines}`);
+    problems.push(`${who} has ${lines} non-blank lines; it must have ${r.minLines}–${r.maxLines}`);
   }
   if (chars < r.minChars || chars > r.maxChars) {
     problems.push(
-      `Reference Solution has ${chars} characters (leading whitespace and line breaks not counted); ` +
+      `${who} has ${chars} characters (leading whitespace and line breaks not counted); ` +
         `it must have ${r.minChars}–${r.maxChars}`,
     );
   }
   return problems;
+}
+
+// * Prompt
+
+// The prompt is shared by every Language, so its examples are plain
+// input → output pairs ("abc" → "cba"; several inputs separated by commas).
+// Flags the syntax of a call or a function written in some Language. Kept
+// conservative: only forms ordinary English never produces.
+const promptPatterns = [
+  [/\b[a-z]+[A-Z]\w*\(/, "a call such as isBalanced(…)"],
+  [/\.[A-Za-z_]\w*\(/, "a method call such as .map(…)"],
+  [/=>|===|!==|::|\\\w+\s*->/, "an arrow, comparison or type signature"],
+  [/\b(?:const|let|var)\s+\w+\s*=/, "a variable declaration"],
+  [/\bfunction\s*\w*\s*\(/, "a function expression"],
+];
+
+export function promptProblems(prompt, functionName) {
+  const calledByName = functionName && new RegExp(`\\b${functionName}\\s*\\(`).test(prompt);
+  const found = promptPatterns
+    .filter(([re], i) => re.test(prompt) && !(i === 0 && calledByName))
+    .map(([, what]) => what);
+  if (calledByName) found.unshift(`a call such as ${functionName}(…)`);
+  return found.map(
+    (what) => `prompt has Language-specific call syntax (${what}); write examples as plain input → output pairs, like "abc" → "cba"`,
+  );
 }
 
 // * Running the tests
@@ -181,8 +254,8 @@ export function runCheck(request, { runnerPath = defaultRunnerPath, timeout = ti
   });
 }
 
-// How a test's call reads, e.g. fizzBuzz(10) (Common.Puzzle.callText).
-const callText = (puzzle, test) => `${puzzle.function}(${test.args.map((a) => JSON.stringify(a)).join(", ")})`;
+// A test's input as a Puzzle prompt writes examples, e.g. `[1,2,3], 2` (Common.Puzzle.inputText).
+const inputText = (test) => test.args.map((a) => JSON.stringify(a)).join(", ");
 
 // Runs the Reference Solution against the Puzzle's tests; returns problems.
 export async function testProblems(puzzle, options) {
@@ -195,21 +268,23 @@ export async function testProblems(puzzle, options) {
   return puzzle.tests.flatMap((t, i) =>
     reply.results[i].pass
       ? []
-      : [`test ${i + 1} failed: ${callText(puzzle, t)} expected ${JSON.stringify(t.expected)}, got ${reply.results[i].got}`],
+      : [`test ${i + 1} failed: ${inputText(t)} → expected ${JSON.stringify(t.expected)}, got ${reply.results[i].got}`],
   );
 }
 
 // * Symbols
 
-export const targetSymbols = [..."{}[]()<>=!&|+-*/%'\"`$?:;,."];
+// The target symbols are the Language's own list, from its language.json.
 export const coverageGoal = 5;
 
-// For each target symbol: how many times it appears over all Reference
-// Solutions (`occurrences`) and in how many Reference Solutions
-// (`solutions`). The coverage goal is judged on `solutions`.
-export function symbolCounts(references) {
-  return targetSymbols.map((symbol) => {
-    const perSolution = references.map((r) => r.split(symbol).length - 1);
+// For each of the Language's target symbols: how many times it appears over
+// all Reference Solutions (`occurrences`) and in how many Reference Solutions
+// (`solutions`). The coverage goal is judged on `solutions`. Imports, which the
+// editor inserts, are not counted.
+export function symbolCounts(references, language = languageNamed("javascript")) {
+  const typed = references.map((r) => typedCode(r, language));
+  return language.symbols.map((symbol) => {
+    const perSolution = typed.map((r) => r.split(symbol).length - 1);
     return {
       symbol,
       occurrences: perSolution.reduce((a, b) => a + b, 0),
@@ -218,40 +293,150 @@ export function symbolCounts(references) {
   });
 }
 
-export function symbolReport(references) {
-  const rows = symbolCounts(references).map(({ symbol, occurrences, solutions }) => {
+export function symbolReport(references, language = languageNamed("javascript")) {
+  const rows = symbolCounts(references, language).map(({ symbol, occurrences, solutions }) => {
     const mark = solutions < coverageGoal ? `  <- in fewer than ${coverageGoal}` : "";
     return `  ${symbol}    ${String(solutions).padStart(9)}  ${String(occurrences).padStart(11)}${mark}`;
   });
   return [
-    `Target symbols over ${references.length} Reference Solution(s) (a report, never a failure):`,
+    `Target symbols, ${language.name}, over ${references.length} Reference Solution(s) (a report, never a failure):`,
     "  sym  solutions  occurrences   (solutions: Reference Solutions containing it)",
     ...rows,
   ].join("\n");
 }
 
+// One report per Language, `references` being {language name: [Reference Solution]}.
+export const symbolReports = (references, languages = defaultLanguages) =>
+  languages.map((language) => symbolReport(references[language.name] ?? [], language)).join("\n\n");
+
+// * PureScript signature
+
+// A PureScript Puzzle's `signature` is what the player types first, two lines
+// (spec, "Puzzle file"):
+//
+//     chunk :: forall a. Array a -> Int -> Array (Array a)
+//     chunk items size = ...
+//
+// so the first is `<function> :: <type>`, the second `<function> <parameter
+// names> = ...`, the parameters are as many as the arguments of every test
+// (the tests pass them in that order), and the Reference Solution defines the
+// same function with the same number of parameters. Every one of the bank's
+// signatures has exactly this shape (a constraint or a record type sits in the
+// type, on the first line), so there is no exception to make.
+
+// The number of top-level, whitespace separated items in a clause's parameter
+// text, so a pattern such as `(Tuple a b)` or `{ x, y }` counts once.
+function patternCount(text) {
+  let depth = 0;
+  let count = 0;
+  let inItem = false;
+  for (const c of text) {
+    if ("([{".includes(c)) depth++;
+    if (")]}".includes(c)) depth--;
+    if (/\s/.test(c) && depth === 0) inItem = false;
+    else if (!inItem) {
+      inItem = true;
+      count++;
+    }
+  }
+  return count;
+}
+
+// The parameter counts of the clauses that define `name` in a PureScript
+// text: lines that start (at column 0) with the name and are not its type
+// signature, up to the `=` (or the end of the line, for guards).
+export function clauseArities(code, name) {
+  const clause = new RegExp(`^${name.replace(/[$()*+.?[\\\]^{|}]/g, "\\$&")}(?=\\s|$)(.*)$`);
+  return code
+    .split(/\r?\n/)
+    .map((line) => clause.exec(line))
+    .filter((m) => m && !/^\s*::/.test(m[1]))
+    .map((m) => patternCount(m[1].replace(/\s=(\s.*)?$/, "")));
+}
+
+export function purescriptSignatureProblems(puzzle, language) {
+  const { signature, reference } = puzzle.solutions[language.name];
+  const name = puzzle.function;
+  const lines = signature.split(/\r?\n/).filter((l) => l.trim() !== "");
+  if (lines.length !== 2) {
+    return [`${language.title} signature has ${lines.length} non-blank lines; it must have 2 (\`${name} :: <type>\`, then \`${name} <parameters> = ...\`)`];
+  }
+  const problems = [];
+  const [typeLine, definition] = lines.map((l) => l.trim());
+  if (!typeLine.startsWith(`${name} :: `) || typeLine.length === `${name} :: `.length) {
+    problems.push(`${language.title} signature's first line must be \`${name} :: <type>\`, not \`${typeLine}\``);
+  }
+  const shape = new RegExp(`^${name} ((?:[a-z_][\\w']*\\s+)*)?= \\.\\.\\.$`);
+  const parameters = shape.exec(definition);
+  if (!parameters) {
+    problems.push(`${language.title} signature's second line must be \`${name} <parameter names> = ...\`, not \`${definition}\``);
+    return problems;
+  }
+  const count = (parameters[1] ?? "").split(/\s+/).filter(Boolean).length;
+  const argCounts = new Set(puzzle.tests.map((t) => t.args.length));
+  if (argCounts.size !== 1 || !argCounts.has(count)) {
+    problems.push(
+      `${language.title} signature has ${count} parameters, but the tests pass ${[...argCounts].sort().join(" or ")} arguments`,
+    );
+  }
+  const arities = clauseArities(reference, name);
+  if (arities.length === 0) {
+    problems.push(`${language.title} Reference Solution does not define \`${name}\``);
+  } else if (arities.some((n) => n !== count)) {
+    problems.push(
+      `${language.title} Reference Solution defines \`${name}\` with ${[...new Set(arities)].sort().join(" or ")} parameters; the signature has ${count}`,
+    );
+  }
+  return problems;
+}
+
+// The signature checks, by Language name: (puzzle, language) -> problems.
+export const signatureLinters = { purescript: purescriptSignatureProblems };
+
 // * The whole bank
 
-// Checks every .toml file in the folder. Resolves to {ok, failures, report}:
-// `failures` is [{file, identity, problems}] for each failing Puzzle file;
-// `report` is the symbol report over the Puzzles that could be read.
-export async function checkBank(dir = defaultPuzzlesDir, options) {
+// The import checks, by Language name: (code, language, options) -> {problems,
+// notes}. A Language with import lines but no entry here has them left out of
+// the counts and nothing more.
+export const importLinters = { purescript: importLint };
+
+// Checks every .toml file in the folder against the Languages in
+// `options.languagesDir` (the repo's languages/ by default). Resolves to {ok,
+// checked, failures, report, notes}: `failures` is [{file, identity, problems}]
+// for each failing Puzzle file; `report` is the symbol report, one table per
+// Language, over the Puzzles that could be read; `notes` say what the check
+// could not do (for example, name checks without library sources). Other
+// options go to the browser's runner.
+export async function checkBank(dir = defaultPuzzlesDir, { languagesDir, ...options } = {}) {
+  const languages = languagesDir ? loadLanguages(languagesDir) : defaultLanguages;
   const names = readdirSync(dir)
     .filter((n) => extname(n) === ".toml")
     .sort();
   const failures = [];
-  const references = [];
+  const notes = new Set();
+  const references = Object.fromEntries(languages.map((l) => [l.name, []]));
   if (names.length === 0) failures.push({ file: dir, identity: null, problems: ["There are no Puzzle files."] });
   for (const name of names) {
     const identity = name.slice(0, -".toml".length);
-    const { puzzle, problems } = readPuzzle(identity, readFileSync(join(dir, name), "utf8"));
+    const { puzzle, problems } = readPuzzle(identity, readFileSync(join(dir, name), "utf8"), languages);
     if (!puzzle) {
       failures.push({ file: name, identity, problems });
       continue;
     }
-    references.push(puzzle.reference);
-    const found = [...lengthProblems(puzzle.reference), ...(await testProblems(puzzle, options))];
+    const found = promptProblems(puzzle.prompt, puzzle.function);
+    for (const language of languages) {
+      const { reference } = puzzle.solutions[language.name];
+      references[language.name].push(reference);
+      found.push(...lengthProblems(reference, language));
+      if (signatureLinters[language.name]) found.push(...signatureLinters[language.name](puzzle, language));
+      if (language.importLine && importLinters[language.name]) {
+        const lint = importLinters[language.name](reference, language, options);
+        found.push(...lint.problems);
+        lint.notes.forEach((n) => notes.add(n));
+      }
+    }
+    if (puzzle.reference !== undefined) found.push(...(await testProblems(puzzle, options)));
     if (found.length > 0) failures.push({ file: name, identity, problems: found });
   }
-  return { ok: failures.length === 0, checked: names.length, failures, report: symbolReport(references) };
+  return { ok: failures.length === 0, checked: names.length, failures, report: symbolReports(references, languages), notes: [...notes] };
 }

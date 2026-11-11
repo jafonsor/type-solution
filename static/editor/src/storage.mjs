@@ -2,8 +2,14 @@
 // it can be tested in Node with a fake storage (test/storage.test.mjs).
 //
 // Runs live under one key as a JSON array of records (Common.Run's
-// RunRecord). A record's key presses are its "keys" and "gaps" fields; the
-// rest is its summary, which is never dropped.
+// RunRecord). A record's key presses are its "keys" and "gaps" fields, and
+// "keyLanguages" (which Language each was typed in, present only for a Run
+// that switched); the rest is its summary, which is never dropped: the
+// "language" and "peeked" fields stay whatever happens. Nothing here names a
+// Language, so stripping covers all of them alike. A record with no
+// "language" is a JavaScript Run written before the field existed; it is
+// stored as it is and never rewritten (Haskell reads the missing field as
+// JavaScript, Common.Run's legacyLanguage).
 
 export const runsKey = "type-solution.runs";
 
@@ -63,6 +69,7 @@ function hasKeyPresses(run) {
 function stripKeyPresses(run) {
   delete run.keys;
   delete run.gaps;
+  delete run.keyLanguages;
 }
 
 // Browsers name a full storage differently: QuotaExceededError (code 22) in
@@ -71,4 +78,47 @@ function isQuotaError(err) {
   return err instanceof Error && (
     err.name === "QuotaExceededError" || err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
     err.code === 22 || err.code === 1014);
+}
+
+// --- Options (spec, "Saved data") ---------------------------------------------
+//
+// One key, a JSON object whose first field is `underlines` (the "Show error
+// underlines" checkbox, on by default). A missing key, a value that isn't a
+// JSON object, or a missing or non-boolean field takes the default. Saving a
+// field keeps every other field it finds (an option a later version added),
+// and writes `underlines` first.
+
+export const optionsKey = "type-solution.options";
+export const defaultOptions = { underlines: true };
+
+function readOptionsObject(storage) {
+  try {
+    const parsed = JSON.parse(storage.getItem(optionsKey));
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {}; // nothing stored, not JSON, or storage that can't be read
+  }
+}
+
+// The options in force: the defaults, with each stored field that has the
+// right type. Never throws.
+export function loadOptions(storage) {
+  const stored = readOptionsObject(storage);
+  return { underlines: typeof stored.underlines === "boolean" ? stored.underlines : defaultOptions.underlines };
+}
+
+// Store one option, keeping the fields we don't know. Never throws: the
+// choice just isn't remembered if storage can't be used. Returns whether it was kept.
+export function saveOption(storage, name, value) {
+  const stored = readOptionsObject(storage);
+  const merged = { underlines: defaultOptions.underlines, ...stored, [name]: value };
+  // `underlines` first, whatever order the stored object had.
+  const { underlines, ...rest } = merged;
+  try {
+    storage.setItem(optionsKey, JSON.stringify({ underlines, ...rest }));
+    return true;
+  } catch (err) {
+    console.warn("Option not saved:", err);
+    return false;
+  }
 }

@@ -1,16 +1,8 @@
 function = "plural"
-signature = "plural(count, word)"
 prompt = """
 Return the count, a space and the word, adding an "s" to the word unless \
-the count is exactly 1. For example, plural(3, "cat") → "3 cats" and \
-plural(1, "cat") → "1 cat"."""
-
-reference = '''
-function plural(count, word) {
-  const suffix = count === 1 ? '' : 's';
-  return `${count} ${word}${suffix}`;
-}
-'''
+the count is exactly 1. For example, 3, "cat" → "3 cats" and \
+1, "cat" → "1 cat"."""
 
 [[tests]]
 args = [3, "cat"]
@@ -27,3 +19,25 @@ expected = "0 dogs"
 [[tests]]
 args = [12, "egg"]
 expected = "12 eggs"
+
+[javascript]
+signature = "plural(count, word)"
+reference = '''
+function plural(count, word) {
+  const suffix = count === 1 ? '' : 's';
+  return `${count} ${word}${suffix}`;
+}
+'''
+
+[purescript]
+signature = '''
+plural :: Int -> String -> String
+plural count word = ...'''
+reference = '''
+import Prelude
+
+plural :: Int -> String -> String
+plural count word = show count <> " " <> word <> suffix
+  where
+    suffix = if count == 1 then "" else "s"
+'''

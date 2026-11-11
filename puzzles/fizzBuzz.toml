@@ -1,17 +1,7 @@
 function = "fizzBuzz"
-signature = "fizzBuzz(n)"
 prompt = """
 Return "Fizz" for multiples of 3, "Buzz" for multiples of 5, \
 "FizzBuzz" for both, otherwise the number as a string."""
-
-reference = '''
-function fizzBuzz(n) {
-  if (n % 15 === 0) return "FizzBuzz";
-  if (n % 3 === 0) return "Fizz";
-  if (n % 5 === 0) return "Buzz";
-  return String(n);
-}
-'''
 
 [[tests]]
 args = [3]
@@ -28,3 +18,29 @@ expected = "FizzBuzz"
 [[tests]]
 args = [7]
 expected = "7"
+
+[javascript]
+signature = "fizzBuzz(n)"
+reference = '''
+function fizzBuzz(n) {
+  if (n % 15 === 0) return "FizzBuzz";
+  if (n % 3 === 0) return "Fizz";
+  if (n % 5 === 0) return "Buzz";
+  return String(n);
+}
+'''
+
+[purescript]
+signature = '''
+fizzBuzz :: Int -> String
+fizzBuzz n = ...'''
+reference = '''
+import Prelude
+
+fizzBuzz :: Int -> String
+fizzBuzz n
+  | n `mod` 15 == 0 = "FizzBuzz"
+  | n `mod` 3 == 0 = "Fizz"
+  | n `mod` 5 == 0 = "Buzz"
+  | otherwise = show n
+'''

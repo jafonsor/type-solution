@@ -1,21 +1,8 @@
 function = "isBalanced"
-signature = "isBalanced(text)"
 prompt = """
 Return true if every ( in the text is closed by a later ) and no ) comes \
 before its (; other characters don't matter. For example, \
-isBalanced("(a(b)c)") → true, and isBalanced(")(") → false."""
-
-reference = '''
-function isBalanced(text) {
-  let depth = 0;
-  for (const c of text) {
-    if (c === '(') depth++;
-    if (c === ')') depth--;
-    if (depth < 0) return false;
-  }
-  return depth === 0;
-}
-'''
+"(a(b)c)" → true, and ")(" → false."""
 
 [[tests]]
 args = ["(a(b)c)"]
@@ -36,3 +23,37 @@ expected = true
 [[tests]]
 args = ["no brackets"]
 expected = true
+
+[javascript]
+signature = "isBalanced(text)"
+reference = '''
+function isBalanced(text) {
+  let depth = 0;
+  for (const c of text) {
+    if (c === '(') depth++;
+    if (c === ')') depth--;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+'''
+
+[purescript]
+signature = '''
+isBalanced :: String -> Boolean
+isBalanced text = ...'''
+reference = '''
+import Prelude
+import Data.Array (uncons)
+import Data.Maybe (Maybe(..))
+import Data.String.CodeUnits (toCharArray)
+
+isBalanced :: String -> Boolean
+isBalanced text = go 0 (toCharArray text)
+  where
+    go depth chars = case uncons chars of
+      Nothing -> depth == 0
+      Just { head: '(', tail } -> go (depth + 1) tail
+      Just { head: ')', tail } -> depth > 0 && go (depth - 1) tail
+      Just { tail } -> go depth tail
+'''

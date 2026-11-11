@@ -53,11 +53,17 @@ decodeRecords txt = case Aeson.decodeStrict (T.encodeUtf8 txt) :: Maybe [Value] 
       Aeson.Success a -> Just a
       Aeson.Error _ -> Nothing
 
--- | The Personal best on the Puzzle with this identity: its fastest passed
--- Run, whose words per minute and Backspaces go with it. Of two equally
--- fast, the earlier. Records of other Puzzles don't count.
-personalBest :: Text -> History -> Maybe RunRecord
-personalBest i (History rs) = foldl faster Nothing (filter ((== i) . (.puzzleIdentity)) rs)
+-- | The Personal best in this Language on the Puzzle with this identity:
+-- its fastest passed Run, whose words per minute and Backspaces go with it.
+-- Of two equally fast, the earlier. Records of other Puzzles and other
+-- Languages don't count; a Run that switched Language is a record of the
+-- Language that passed, with its whole-Run time. A peeked Run is eligible:
+-- time alone decides, so a faster Run replaces the best peeked or not, the
+-- record that holds the best carries its own mark ('RunRecord.peeked'), and
+-- a slower unpeeked Run never replaces a faster peeked best.
+personalBest :: Text -> Text -> History -> Maybe RunRecord
+personalBest l i (History rs) = foldl faster Nothing
+  (filter (\r -> r.puzzleIdentity == i && r.language == l) rs)
   where
     faster Nothing r = Just r
     faster (Just b) r = Just (if r.duration < b.duration then r else b)
@@ -65,69 +71,91 @@ personalBest i (History rs) = foldl faster Nothing (filter ((== i) . (.puzzleIde
 -- | How a passed Run's time compares with the Personal best before it.
 data Standing
   = FirstTime
-    -- ^ No earlier passed Run on the Puzzle.
-  | NewBest Double
-    -- ^ Faster than every earlier one; the old best's seconds.
-  | NotBest Double
-    -- ^ As fast as the best or slower; the best's seconds. A tie isn't a
-    -- new best: it doesn't beat the time to beat.
+    -- ^ No earlier passed Run on the Puzzle in this Language.
+  | NewBest RunRecord
+    -- ^ Faster than every earlier one; the old best (its time and its mark).
+  | NotBest RunRecord
+    -- ^ As fast as the best or slower; the best. A tie isn't a new best: it
+    -- doesn't beat the time to beat.
   deriving stock (Eq, Show)
 
--- | How a time in seconds on the Puzzle with this identity compares with
--- the history, which must not hold the Run itself yet. Compares the stored
--- seconds, not the times as shown to a tenth.
-standing :: Text -> Double -> History -> Standing
-standing i seconds h = case personalBest i h of
+-- | How a time in seconds in this Language on the Puzzle with this identity
+-- compares with the history, which must not hold the Run itself yet.
+-- Compares the stored seconds, not the times as shown to a tenth.
+standing :: Text -> Text -> Double -> History -> Standing
+standing l i seconds h = case personalBest l i h of
   Nothing -> FirstTime
   Just b
-    | seconds < b.duration -> NewBest b.duration
-    | otherwise -> NotBest b.duration
+    | seconds < b.duration -> NewBest b
+    | otherwise -> NotBest b
 
 -- * The weak-key lists
 
--- | Most missed: the five characters with the most Corrections, most first,
--- each with its count. A Correction is a character typed straight after a
--- run of exactly one or two Backspaces; three or more in a row is a rewrite
--- and counts for nothing. A character with no Corrections isn't listed.
--- Of two with the same count, the lower character (by code point) first.
--- See 'weakKeyRuns' for which Runs count and 'listed' for which characters.
-mostMissed :: History -> [(Char, Int)]
-mostMissed h = topFive $ listed h $
-  Map.fromListWith (+) [(c, 1) | ps <- weakKeyRuns h, c <- corrections ps]
+-- | Most missed in this Language: the five characters with the most
+-- Corrections, most first, each with its count. A Correction is a character
+-- typed straight after a run of exactly one or two Backspaces; three or more
+-- in a row is a rewrite and counts for nothing. A character with no
+-- Corrections isn't listed. Of two with the same count, the lower character
+-- (by code point) first. See 'weakKeyRuns' for which Runs count and 'listed'
+-- for which characters.
+mostMissed :: Text -> History -> [(Char, Int)]
+mostMissed l h = topFive $ listed l h $
+  Map.fromListWith (+) [(c, 1) | ps <- weakKeyRuns l h, c <- corrections ps]
 
--- | Slowest: the five characters with the highest median Hesitation, slowest
--- first, each with that median in milliseconds. Hesitation is a press's time
--- since the previous press; each Run's first press, and any gap over 1.5 s
--- (thinking, or a Pause), are left out. A character typed straight after a
--- Backspace counts like any other: finding the right key is what Hesitation
--- measures. The median of an even number of gaps is the mean of the two
--- middle ones. Of two with the same median, the lower character first.
-slowest :: History -> [(Char, Double)]
-slowest h = topFive $ listed h $ Map.map median $
-  Map.fromListWith (<>) [(c, [g]) | ps <- weakKeyRuns h, (c, g) <- hesitations ps]
+-- | Slowest in this Language: the five characters with the highest median
+-- Hesitation, slowest first, each with that median in milliseconds.
+-- Hesitation is a press's time since the previous press; the first press of
+-- each stretch typed in the Language (a Run's first press, or the first
+-- after a switch back) and any gap over 1.5 s (thinking, or a Pause) are
+-- left out. A character typed straight after a Backspace counts like any
+-- other: finding the right key is what Hesitation measures. The median of
+-- an even number of gaps is the mean of the two middle ones. Of two with the
+-- same median, the lower character first.
+slowest :: Text -> History -> [(Char, Double)]
+slowest l h = topFive $ listed l h $ Map.map median $
+  Map.fromListWith (<>) [(c, [g]) | ps <- weakKeyRuns l h, (c, g) <- hesitations ps]
 
--- | The key presses of the Runs the lists look at: the last 20 passed Runs
--- that still have key presses. Records without them (stored before Runs
--- kept them, or stripped to make room) are skipped and don't use up one of
--- the 20.
-weakKeyRuns :: History -> [[KeyPress]]
-weakKeyRuns (History rs) = takeEnd 20 (filter (not . null) (map (.keyPresses) rs))
+-- | The key presses the lists of this Language look at, as stretches typed
+-- in it (a Run that switched back and forth has several, kept apart so a
+-- Backspace run or a gap never spans a switch): those of the last 20 passed
+-- Runs that still have key presses typed in this Language. A press counts
+-- toward the Language it was typed in, so a Run belongs to a Language's
+-- window if it has presses in it, not only if it passed there; for a Run
+-- that never switched that is exactly "the records of that Language".
+-- Records without presses (stored before Runs kept them, or stripped to make
+-- room) are skipped and don't use up one of the 20.
+weakKeyRuns :: Text -> History -> [[KeyPress]]
+weakKeyRuns l (History rs) = concat (takeEnd 20 (filter (not . null) (map (stretchesIn l) rs)))
   where takeEnd n xs = drop (length xs - n) xs
+
+-- | The stretches of a record's key presses typed in this Language, in order.
+stretchesIn :: Text -> RunRecord -> [[KeyPress]]
+stretchesIn l r = [ps | (l', ps) <- stretches r, l' == l, not (null ps)]
+
+-- | A record's key presses as consecutive stretches, each with the Language
+-- it was typed in.
+stretches :: RunRecord -> [(Text, [KeyPress])]
+stretches r = case r.keyLanguages of
+  [] -> [(r.language, r.keyPresses) | not (null r.keyPresses)]
+  segs -> go segs r.keyPresses
+  where
+    go [] _ = []
+    go ((l, n) : rest) ps = let (here, later) = splitAt n ps in (l, here) : go rest later
 
 -- | Keeps only the characters typed at least 10 times in those Runs (every
 -- press of the character, Corrections included). Space, Enter, Tab and
 -- Backspace aren't characters, so they never appear; @A@ and @a@ are
 -- different characters.
-listed :: History -> Map Char a -> Map Char a
-listed h m = Map.restrictKeys m (Map.keysSet (Map.filter (>= 10) typed))
+listed :: Text -> History -> Map Char a -> Map Char a
+listed l h m = Map.restrictKeys m (Map.keysSet (Map.filter (>= 10) typed))
   where
-    typed = Map.fromListWith (+) [(c, 1 :: Int) | ps <- weakKeyRuns h, KeyPress { key = Character c } <- ps]
+    typed = Map.fromListWith (+) [(c, 1 :: Int) | ps <- weakKeyRuns l h, KeyPress { key = Character c } <- ps]
 
 -- | Worst first, then by character; five at most.
 topFive :: Ord a => Map Char a -> [(Char, a)]
 topFive = take 5 . sortOn (\(c, v) -> (Down v, c)) . Map.toList
 
--- | The characters each Correction in one Run was aiming for, in order.
+-- | The characters each Correction in one stretch was aiming for, in order.
 corrections :: [KeyPress] -> [Char]
 corrections = go 0
   where
@@ -138,8 +166,8 @@ corrections = go 0
       Character c | n == 1 || n == 2 -> c : go 0 rest
       _ -> go 0 rest
 
--- | Each character press in one Run with its Hesitation in milliseconds,
--- leaving out the Run's first press and gaps over 1.5 s.
+-- | Each character press in one stretch with its Hesitation in
+-- milliseconds, leaving out the stretch's first press and gaps over 1.5 s.
 hesitations :: [KeyPress] -> [(Char, Int)]
 hesitations ps = [(c, kp.sincePrevious) | kp@KeyPress { key = Character c } <- drop 1 ps, kp.sincePrevious <= 1500]
 

@@ -1,16 +1,7 @@
 function = "isPalindrome"
-signature = "isPalindrome(text)"
 prompt = """
 Return true if the text reads the same backwards as forwards, ignoring \
-upper and lower case. For example, isPalindrome("Racecar") → true."""
-
-reference = '''
-function isPalindrome(text) {
-  const lower = text.toLowerCase();
-  const reversed = lower.split("").reverse().join("");
-  return lower === reversed;
-}
-'''
+upper and lower case. For example, "Racecar" → true."""
 
 [[tests]]
 args = ["Racecar"]
@@ -27,3 +18,30 @@ expected = true
 [[tests]]
 args = ["Ab"]
 expected = false
+
+[javascript]
+signature = "isPalindrome(text)"
+reference = '''
+function isPalindrome(text) {
+  const lower = text.toLowerCase();
+  const reversed = lower.split("").reverse().join("");
+  return lower === reversed;
+}
+'''
+
+[purescript]
+signature = '''
+isPalindrome :: String -> Boolean
+isPalindrome text = ...'''
+reference = '''
+import Prelude
+import Data.Array (reverse)
+import Data.String (toLower)
+import Data.String.CodeUnits (fromCharArray, toCharArray)
+
+isPalindrome :: String -> Boolean
+isPalindrome text = lower == reversed
+  where
+    lower = toLower text
+    reversed = lower # toCharArray # reverse # fromCharArray
+'''

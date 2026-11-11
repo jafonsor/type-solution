@@ -1,0 +1,13 @@
+import { WASI } from 'node:wasi';
+import { readFileSync } from 'node:fs';
+const [,, wasmPath, root, ...a0] = process.argv; const args = a0.flatMap(x => x.startsWith('@') ? readFileSync(x.slice(1),'utf8').split('\n').filter(Boolean).map(f => '/w/'+f) : [x]);
+const t0 = performance.now();
+const bytes = readFileSync(wasmPath);
+const mod = await WebAssembly.compile(bytes);
+const t1 = performance.now();
+const wasi = new WASI({ version: 'preview1', args: ['purs-core', ...args], env: {}, preopens: { '/w': root }, returnOnExit: true });
+const inst = await WebAssembly.instantiate(mod, { wasi_snapshot_preview1: wasi.wasiImport });
+const t2 = performance.now();
+const code = wasi.start(inst);
+const t3 = performance.now();
+console.error(JSON.stringify({ exit: code, compile_ms: Math.round(t1-t0), instantiate_ms: Math.round(t2-t1), run_ms: Math.round(t3-t2), rss_mb: Math.round(process.memoryUsage().rss/1e6), mem_pages: inst.exports.memory ? inst.exports.memory.buffer.byteLength/1e6 : null }));

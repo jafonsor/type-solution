@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: resolved
 
 # 04: Fill the launch bank to about 50 Puzzles
 

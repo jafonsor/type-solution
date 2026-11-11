@@ -1,0 +1,6 @@
+<!doctype html><meta charset=utf-8><pre id=o>running…</pre>
+<script>
+const w = new Worker('worker.js', {type:'module'});
+w.onmessage = e => { window.RESULT = e.data; document.getElementById('o').textContent = JSON.stringify(e.data, null, 1); };
+w.postMessage(0);
+</script>
