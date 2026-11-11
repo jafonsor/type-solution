@@ -63,24 +63,37 @@ export const isImportLine = (text) => /^\s*import\b/.test(text);
 
 // The names a one-line import's list brings in: "Maybe(..), class Show,
 // (<>), fromMaybe" gives Maybe, Show, <>, fromMaybe (and listed constructors).
-function listedNames(list) {
-  const names = [];
-  let depth = 0, start = 0;
+// The items of a list, with where each is in it: [{from, to, text}] (`text`
+// trimmed, from and to its place in `list`), split at commas outside brackets.
+function listItems(list) {
   const items = [];
+  let depth = 0, start = 0;
   for (let i = 0; i <= list.length; i++) {
     const c = list[i];
     if (c === "(") depth++;
     else if (c === ")") depth--;
-    else if ((c === "," && depth === 0) || i === list.length) { items.push(list.slice(start, i)); start = i + 1; }
+    else if ((c === "," && depth === 0) || i === list.length) {
+      const raw = list.slice(start, i);
+      const text = raw.trim();
+      if (text !== "") items.push({ from: start + raw.indexOf(text), to: start + raw.indexOf(text) + text.length, text });
+      start = i + 1;
+    }
   }
-  for (let item of items) {
-    item = item.trim().replace(/^(?:class|type)\s+/, "");
+  return items;
+}
+
+// `wide` gets the types listed with all their constructors, `T(..)`.
+function listedNames(list, wide = new Set()) {
+  const names = [];
+  for (let { text: item } of listItems(list)) {
+    item = item.replace(/^(?:class|type)\s+/, "");
     if (item === "") continue;
     const operator = /^\((.+)\)$/.exec(item);
     if (operator) { names.push(operator[1].trim()); continue; }
     const withMembers = /^([\w']+)\s*\((.*)\)$/.exec(item);
     if (withMembers) {
       names.push(withMembers[1]);
+      if (withMembers[2].trim() === "..") wide.add(withMembers[1]);
       for (const m of withMembers[2].split(",")) if (m.trim() && m.trim() !== "..") names.push(m.trim());
     } else names.push(item);
   }
@@ -89,10 +102,11 @@ function listedNames(list) {
 
 // The document's imports: `lines` (every import line: {from, to, text}),
 // `merge` (module -> the first `import M (...)` line to merge into),
-// `names` (every name a list imports), `open` (modules imported whole,
+// `listed` (module -> every `import M (...)` line of it), `names` (every name a
+// list imports), `wide` (the types a list imports with `(..)`), `open` (modules imported whole,
 // `import M`, so everything they export is in scope).
 export function readImports(doc) {
-  const out = { lines: [], merge: new Map(), names: new Set(), open: new Set() };
+  const out = { lines: [], merge: new Map(), listed: new Map(), names: new Set(), wide: new Set(), open: new Set() };
   let from = 0;
   for (const text of doc.split("\n")) {
     const line = { from, to: from + text.length, text };
@@ -102,7 +116,9 @@ export function readImports(doc) {
     const listed = /^import\s+([A-Z][\w.]*)\s*\((.*)\)\s*$/.exec(text);
     if (listed) {
       if (!out.merge.has(listed[1])) out.merge.set(listed[1], line);
-      for (const n of listedNames(listed[2])) out.names.add(n);
+      if (!out.listed.has(listed[1])) out.listed.set(listed[1], []);
+      out.listed.get(listed[1]).push(line);
+      for (const n of listedNames(listed[2], out.wide)) out.names.add(n);
     } else {
       const whole = /^import\s+([A-Z][\w.]*)\s*$/.exec(text);
       if (whole) out.open.add(whole[1]);
@@ -112,7 +128,9 @@ export function readImports(doc) {
 }
 
 // The name table (names.<hash>.json: {modules: {M: [[name, kind]]}, preferred:
-// {name: [M, ...]}}) as what the popup searches: the names an identifier can
+// {name: [M, ...]}}; a row is [name, kind] or, for a constructor, [name,
+// "constructor", its type's name]; a type that has constructors has kind
+// "data") as what the popup searches: the names an identifier can
 // be typed as (not operators), with the modules to offer for each, preferred
 // module first; and the names Prelude exports, which need no import.
 const indexes = new WeakMap();
@@ -122,10 +140,13 @@ export function indexNames(table) {
   const prelude = new Set((table.modules.Prelude ?? []).map(([name]) => name));
   const found = new Map(); // name -> Map(module -> kind)
   for (const [module, names] of Object.entries(table.modules)) {
-    for (const [name, kind] of names) {
+    for (const [name, kind, owner] of names) {
       if (kind === "operator" || kind === "typeOperator" || prelude.has(name)) continue;
       if (!found.has(name)) found.set(name, new Map());
-      found.get(name).set(module, kind);
+      const byModule = found.get(name);
+      // a type and its constructor can share a name (Tuple); both are imported as `Tuple(..)`
+      if (kind === "constructor") byModule.set(module, { kind, type: owner });
+      else if (!byModule.has(module) || kind === "data") byModule.set(module, { kind, type: kind === "data" ? name : undefined });
     }
   }
   const entries = [];
@@ -134,7 +155,7 @@ export function indexNames(table) {
     const listed = table.preferred && Object.hasOwn(table.preferred, name) ? table.preferred[name] : [];
     const preferred = listed.filter((m) => byModule.has(m));
     const modules = preferred.length > 0 ? preferred : [...byModule.keys()].sort();
-    entries.push({ name, lower: name.toLowerCase(), modules: modules.map((module) => ({ module, kind: byModule.get(module) })) });
+    entries.push({ name, lower: name.toLowerCase(), modules: modules.map((module) => ({ module, ...byModule.get(module) })) });
   }
   entries.sort((a, b) => (a.lower < b.lower ? -1 : a.lower > b.lower ? 1 : a.name < b.name ? -1 : 1));
   index = { entries, prelude };
@@ -144,28 +165,46 @@ export function indexNames(table) {
 
 // What to offer for the word being typed: names (and their modules) starting
 // with it, ignoring case, in alphabetical order and each name's modules in
-// preference order, at most `limit`. Not offered: names Prelude exports, names
-// the document already imports (from any module), names of a module it imports
-// whole.
+// preference order, at most `limit`. A constructor is offered with its module
+// (`Just` from Data.Maybe), a type with constructors as itself (`Maybe`):
+// accepting either imports the type with all its constructors. Not offered:
+// names Prelude exports, names the document already imports (from any
+// module), constructors of a type it imports as `T(..)`, names of a module it
+// imports whole.
 export function offers(table, doc, word, limit) {
   const have = readImports(doc);
   const prefix = word.toLowerCase();
   const out = [];
   for (const entry of indexNames(table).entries) {
     if (!entry.lower.startsWith(prefix) || have.names.has(entry.name)) continue;
-    for (const { module, kind } of entry.modules) {
-      if (have.open.has(module)) continue;
-      out.push({ name: entry.name, module, kind });
+    for (const { module, kind, type } of entry.modules) {
+      if (have.open.has(module) || (kind === "constructor" && have.wide.has(type))) continue;
+      out.push(type === undefined ? { name: entry.name, module, kind } : { name: entry.name, module, kind, type });
       if (out.length === limit) return out;
     }
   }
   return out;
 }
 
-// The import edit: one change. A class is imported as `class Name`.
+// The import edit: one change. A class is imported as `class Name`; a
+// constructor or a type with constructors as `Type(..)`, which replaces the
+// type's own entry when the module's list already has it bare (`Maybe`) or
+// with some constructors (`Maybe(Just)`).
 export function importEdit(doc, offer) {
-  const item = offer.kind === "class" ? `class ${offer.name}` : offer.name;
+  const type = offer.kind === "constructor" ? offer.type : offer.kind === "data" ? offer.name : null;
+  const item = type !== null ? `${type}(..)` : offer.kind === "class" ? `class ${offer.name}` : offer.name;
   const have = readImports(doc);
+  if (type !== null) {
+    for (const line of have.listed.get(offer.module) ?? []) {
+      const open = line.text.indexOf("(");
+      const close = line.text.lastIndexOf(")");
+      for (const found of listItems(line.text.slice(open + 1, close))) {
+        if (new RegExp(`^${type}\\s*(?:\\(.*\\))?$`).test(found.text)) {
+          return { from: line.from + open + 1 + found.from, to: line.from + open + 1 + found.to, insert: item };
+        }
+      }
+    }
+  }
   const merge = have.merge.get(offer.module);
   if (merge) {
     // before the closing ")", after the last thing in the list

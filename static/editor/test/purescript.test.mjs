@@ -15,14 +15,18 @@ const table = {
   modules: {
     Prelude: [["map", "value"], ["show", "value"], ["Show", "class"], ["<>", "operator"], ["pure", "value"]],
     "Data.Array": [["drop", "value"], ["filter", "value"], ["length", "value"], ["take", "value"], ["takeWhile", "value"], ["!!", "operator"]],
-    "Data.List": [["filter", "value"], ["length", "value"], ["take", "value"]],
+    "Data.List": [["Pattern", "data"], ["Pattern", "constructor", "Pattern"], ["filter", "value"], ["length", "value"], ["take", "value"]],
     "Data.Foldable": [["foldl", "value"], ["length", "value"], ["Foldable", "class"]],
-    "Data.Maybe": [["Maybe", "type"], ["fromMaybe", "value"]],
+    "Data.Maybe": [["Just", "constructor", "Maybe"], ["Maybe", "data"], ["Nothing", "constructor", "Maybe"], ["fromMaybe", "value"]],
+    "Data.Either": [["Either", "data"], ["Left", "constructor", "Either"], ["Right", "constructor", "Either"]],
+    "Data.Tuple": [["Tuple", "data"], ["Tuple", "constructor", "Tuple"]],
+    "Data.Void": [["Void", "type"]],
+    "Data.String": [["Pattern", "data"], ["Pattern", "constructor", "Pattern"]],
     "Data.Lazy": [["force", "value"], ["fromThing", "value"]],
     "Data.Other": [["force", "value"]],
     "Data.Show": [["toString", "value"], ["constructor", "value"]],
   },
-  preferred: { length: ["Data.Array", "Data.Foldable", "Data.List"], filter: ["Data.Array", "Data.List"], take: ["Data.Array", "Data.List"] },
+  preferred: { length: ["Data.Array", "Data.Foldable", "Data.List"], filter: ["Data.Array", "Data.List"], take: ["Data.Array", "Data.List"], Pattern: ["Data.String", "Data.List"] },
 };
 const apply = (doc, edit) => doc.slice(0, edit.from) + edit.insert + doc.slice(edit.to ?? edit.from);
 const add = (doc, name, module, kind = "value") => apply(doc, importEdit(doc, { name, module, kind }));
@@ -76,6 +80,86 @@ test("import edit: it is ONE change that touches only the import, so the typed t
   const next = state.update({ changes: edit }).state;
   assert.equal(next.doc.toString().endsWith("f = ta"), true);
   assert.equal(next.selection.main.head, next.doc.length); // the cursor still follows "ta"
+});
+
+// --- constructors (ticket 39) -------------------------------------------------------
+
+const conAdd = (doc, name, module) => {
+  const offer = offers(table, doc, name, 20).find((o) => o.name === name && o.module === module);
+  assert.ok(offer, `${name} from ${module} is offered`);
+  return apply(doc, importEdit(doc, offer));
+};
+
+test("constructors: typing Just or Nothing offers Data.Maybe; accepting adds Maybe(..), a new line when there is no import", () => {
+  assert.deepEqual(names("", "Jus"), ["Just Data.Maybe"]);
+  assert.deepEqual(names("", "Noth"), ["Nothing Data.Maybe"]);
+  assert.equal(conAdd("f = Jus", "Just", "Data.Maybe"), "import Data.Maybe (Maybe(..))\n\nf = Jus");
+  assert.equal(conAdd("f = Not", "Nothing", "Data.Maybe"), "import Data.Maybe (Maybe(..))\n\nf = Not");
+  assert.equal(conAdd("import Prelude\n\nf = Jus", "Just", "Data.Maybe"), "import Prelude\nimport Data.Maybe (Maybe(..))\n\nf = Jus");
+});
+
+test("constructors: an existing import of the module is merged into", () => {
+  assert.equal(conAdd("import Data.Maybe (fromMaybe)\nf = Jus", "Just", "Data.Maybe"), "import Data.Maybe (fromMaybe, Maybe(..))\nf = Jus");
+  assert.equal(conAdd("import Data.Maybe ()\nf", "Nothing", "Data.Maybe"), "import Data.Maybe (Maybe(..))\nf");
+});
+
+test("constructors: the type imported bare becomes Type(..), not a second entry", () => {
+  assert.equal(conAdd("import Data.Maybe (Maybe)\nf = Jus", "Just", "Data.Maybe"), "import Data.Maybe (Maybe(..))\nf = Jus");
+  assert.equal(conAdd("import Data.Maybe (fromMaybe, Maybe, other)\nf", "Just", "Data.Maybe"), "import Data.Maybe (fromMaybe, Maybe(..), other)\nf");
+  assert.equal(conAdd("import Data.Maybe ( Maybe )\nf", "Just", "Data.Maybe"), "import Data.Maybe ( Maybe(..) )\nf");
+  assert.equal(conAdd("import Data.Maybe (Maybe(Just))\nf = Not", "Nothing", "Data.Maybe"), "import Data.Maybe (Maybe(..))\nf = Not");
+  // a bare Maybe on a second import line of the module is the one that changes
+  assert.equal(conAdd("import Data.Maybe (fromMaybe)\nimport Data.Maybe (Maybe)\nf", "Just", "Data.Maybe"), "import Data.Maybe (fromMaybe)\nimport Data.Maybe (Maybe(..))\nf");
+});
+
+test("constructors: with Maybe(..) imported, Just and Nothing are not offered (nor Maybe)", () => {
+  assert.deepEqual(names("import Data.Maybe (Maybe(..))\nf = Jus", "Jus"), []);
+  assert.deepEqual(names("import Data.Maybe (fromMaybe, Maybe(..))\n", "Noth"), []);
+  assert.deepEqual(names("import Data.Maybe ( Maybe( .. ) )\n", "Jus"), []); // spaces inside
+  // bare Maybe: Just is still offered (it widens the import), Maybe itself is imported already
+  assert.deepEqual(names("import Data.Maybe (Maybe)\n", "Jus"), ["Just Data.Maybe"]);
+  assert.deepEqual(names("import Data.Maybe (Maybe)\n", "May"), []);
+  // a constructor imported by itself is not offered again
+  assert.deepEqual(names("import Data.Maybe (Maybe(Just))\n", "Jus"), []);
+  // a module imported whole needs nothing
+  assert.deepEqual(names("import Data.Maybe\n", "Jus"), []);
+});
+
+test("constructors: typing the type name offers Type(..) when it has constructors, Type alone when it has none", () => {
+  const maybe = offers(table, "", "May", 6);
+  assert.deepEqual(maybe.map((o) => `${o.name} ${o.module} ${o.kind}`), ["Maybe Data.Maybe data"]);
+  assert.equal(apply("f = May", importEdit("f = May", maybe[0])), "import Data.Maybe (Maybe(..))\n\nf = May");
+  const merged = "import Data.Maybe (fromMaybe)\nf = May";
+  assert.equal(apply(merged, importEdit(merged, maybe[0])), "import Data.Maybe (fromMaybe, Maybe(..))\nf = May");
+  const none = offers(table, "", "Voi", 6);
+  assert.deepEqual(none.map((o) => `${o.name} ${o.module} ${o.kind}`), ["Void Data.Void type"]);
+  assert.equal(apply("f = Voi", importEdit("f = Voi", none[0])), "import Data.Void (Void)\n\nf = Voi");
+});
+
+test("constructors: Either and Tuple; a type and its constructor of one name are one offer", () => {
+  assert.deepEqual(names("", "Lef"), ["Left Data.Either"]);
+  assert.equal(conAdd("f = Rig", "Right", "Data.Either"), "import Data.Either (Either(..))\n\nf = Rig");
+  assert.deepEqual(names("", "Tup"), ["Tuple Data.Tuple"]);
+  assert.equal(conAdd("f = Tup", "Tuple", "Data.Tuple"), "import Data.Tuple (Tuple(..))\n\nf = Tup");
+  assert.deepEqual(names("import Data.Tuple (Tuple(..))\n", "Tup"), []);
+});
+
+test("constructors: a constructor two modules export follows the preference list", () => {
+  assert.deepEqual(names("", "Pat"), ["Pattern Data.String", "Pattern Data.List"]);
+  assert.equal(conAdd("import Data.List (take)\nf = Pat", "Pattern", "Data.String"), "import Data.List (take)\nimport Data.String (Pattern(..))\nf = Pat");
+  assert.equal(conAdd("import Data.List (take)\nf = Pat", "Pattern", "Data.List"), "import Data.List (take, Pattern(..))\nf = Pat");
+  // imported from either, the name is imported (as for any name)
+  assert.deepEqual(names("import Data.String (Pattern(..))\n", "Pat"), []);
+});
+
+test("constructors: the edit is still one change, so the typed text and the cursor survive", () => {
+  const doc = "f = Jus";
+  const edit = importEdit(doc, offers(table, doc, "Jus", 6)[0]);
+  assert.ok(!Array.isArray(edit));
+  const state = EditorState.create({ doc, selection: { anchor: doc.length } });
+  const next = state.update({ changes: edit }).state;
+  assert.equal(next.doc.toString(), "import Data.Maybe (Maybe(..))\n\nf = Jus");
+  assert.equal(next.selection.main.head, next.doc.length);
 });
 
 // --- which names are offered ---------------------------------------------------

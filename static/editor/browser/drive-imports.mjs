@@ -315,6 +315,55 @@ check("accepting after a switch back adds the import", (await doc()) === "import
 await pickLanguage("JavaScript"); await sleep(200);
 check("the JavaScript draft survived", (await doc()) === "  let ta", JSON.stringify(await doc()));
 
+// --- constructors (ticket 39): Just and Nothing import Maybe(..) --------------------------------------
+await pickLanguage("PureScript (test)"); await sleep(300);
+const clear = async () => { await B.press("a", [MOD]); await B.press("Backspace"); await sleep(100); };
+await focusEditor();
+await clear();
+await typed("f = Jus");
+await sleep(250);
+list = await items();
+check("typing Jus offers Just with its module Data.Maybe", list.includes("Just|Data.Maybe"), JSON.stringify(list));
+await shot("constructor-just");
+await accept("Tab");
+check("Tab on Just adds import Data.Maybe (Maybe(..)), the typed letters untouched", (await doc()) === "import Data.Maybe (Maybe(..))\n\nf = Jus", JSON.stringify(await doc()));
+await typed("t x\ng = Jus");
+await sleep(200);
+check("with Maybe(..) imported, Just is not offered again", !(await items()).some((t) => t.startsWith("Just|")), JSON.stringify(await items()));
+await clear();
+await typed("f = Noth");
+await sleep(250);
+list = await items();
+check("typing Noth offers Nothing with Data.Maybe", list.includes("Nothing|Data.Maybe"), JSON.stringify(list));
+await accept("Enter");
+check("Enter on Nothing adds import Data.Maybe (Maybe(..))", (await doc()) === "import Data.Maybe (Maybe(..))\n\nf = Noth", JSON.stringify(await doc()));
+await clear();
+await typed("import Data.Maybe (fromMaybe)\nf = Not");
+await sleep(250);
+// Recorded, not a check: after only "Not" the six places go to Not (two type-level
+// classes) and note, notElem (names sort alphabetically, ignoring case), so Nothing
+// shows from "Noth" on. The order is the owner's to change (ticket 39, questions).
+console.log("popup after `Not`:", JSON.stringify(await items()));
+await typed("h");
+list = await items();
+check("typing Noth with fromMaybe imported offers Nothing", list.includes("Nothing|Data.Maybe"), JSON.stringify(list));
+await shot("constructor-merge");
+await accept("Tab");
+check("accepting merges: import Data.Maybe (fromMaybe, Maybe(..))", (await doc()) === "import Data.Maybe (fromMaybe, Maybe(..))\nf = Noth", JSON.stringify(await doc()));
+await clear();
+await typed("import Data.Maybe (Maybe)\nf = Jus");
+await sleep(250);
+await accept("Tab");
+check("a bare Maybe becomes Maybe(..), not a second entry", (await doc()) === "import Data.Maybe (Maybe(..))\nf = Jus", JSON.stringify(await doc()));
+await clear();
+await typed("f :: May");
+await sleep(250);
+list = await items();
+check("typing the type name offers it from Data.Maybe", list.includes("Maybe|Data.Maybe"), JSON.stringify(list));
+await accept("Tab");
+check("accepting the type name imports Maybe(..) too", (await doc()) === "import Data.Maybe (Maybe(..))\n\nf :: May", JSON.stringify(await doc()));
+await clear();
+
 // the popup in the dark scheme (a look, for the screenshot)
 await B.dark();
 await pickLanguage("PureScript (test)"); await sleep(200);

@@ -1,5 +1,5 @@
 {
-  "about": "Names that two or more of the everyday modules export as different things. For each, the modules in order of preference: the first is the one the import popup offers first. Everyday modules, in the order that breaks ties: Prelude, Data.Array, Data.Foldable, Data.Traversable, Data.Maybe, Data.Tuple, Data.String, Data.String.CodeUnits, Data.String.Common, Data.Int, Data.Enum, Data.Number, Foreign.Object, Record, Data.List, Data.Either, Data.Argonaut.Core. Derived once from the pinned libraries' export lists; regenerate it when packages.json changes.",
+  "about": "Names that two or more of the everyday modules export as different things. For each, the modules in order of preference: the first is the one the import popup offers first. Everyday modules, in the order that breaks ties: Prelude, Data.Array, Data.Foldable, Data.Traversable, Data.Maybe, Data.Tuple, Data.String, Data.String.CodeUnits, Data.String.Common, Data.Int, Data.Enum, Data.Number, Foreign.Object, Record, Data.List, Data.Either, Data.Argonaut.Core. Constructor names count (a constructor an everyday module exports and another module exports as a different thing: Nil, Cons, NonEmptyList; Pattern was already here). Derived once from the pinned libraries' export lists; regenerate it when packages.json changes.",
   "preferred": {
     "min": ["Prelude", "Data.Number"],
     "max": ["Prelude", "Data.Number"],
@@ -102,6 +102,9 @@
     "round": ["Data.Int", "Data.Number"],
     "toNumber": ["Data.Int", "Data.Argonaut.Core"],
     "fromString": ["Data.Int", "Data.Number", "Data.Argonaut.Core"],
-    "pow": ["Data.Int", "Data.Number"]
+    "pow": ["Data.Int", "Data.Number"],
+    "Nil": ["Data.List"],
+    "Cons": ["Data.List"],
+    "NonEmptyList": ["Data.List"]
   }
 }
