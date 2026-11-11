@@ -215,6 +215,22 @@ No ADR for Personal best per Puzzle and Language (a `CONTEXT.md` rule; bests are
 6. Editor mode and the import popup; test the untested items.
 7. ADRs 0002 and 0003; update the MVP spec's I7.
 
+## Where the build differs from the plan
+
+Written 2026-11-11, after the build and its whole-branch review. Each item says where the detail lives; the owner's answer is recorded where there was one.
+
+- **Compiler download size.** The plan quoted 2.3 MB brotli. GitHub Pages serves gzip even when brotli is offered, so players download about 3.5 MB (3.45 MB at gzip -9). Detail: "Bundle size" under Build and shipping. Owner: no change.
+- **One file without a content hash.** The pointer `current.json` has a fixed name so the page can find the manifest without a change to the app's own build; it is fetched with `cache: "no-cache"`. The plan said every file. Owner accepted (2026-11-10).
+- **A library's externs travel in its pack.** The plan said a manifest maps each library to its externs; the compiler also needs the sources, so the manifest maps a library to one pack holding sources, externs and compiled JavaScript (ticket 28).
+- **Check time.** The 400 ms target holds for Prelude-only Solutions in both browsers and for `import Data.Array` in Firefox (328 ms). In Chrome `import Data.Array` takes 465 ms, 16% over, on a machine that was not quiet. No limit set; re-measure when the first real deploy exists (ticket 37).
+- **Preloading is partial.** The plan says preloading keeps the compiler wait small. The bundle downloads at the first pick (or at load, if remembered), but libraries are fetched when a check first needs them, and the optional warm-up compile was not built: the first check after loading costs 0.3 to 0.4 s more. Warm-up is [ticket 38](issues/38-task-warm-up-first-check.md).
+- **Stale worker scripts after a deploy.** `purs-compiler.js` and `purs-sandbox.js` are found beside the hashed `runner.js` by plain name, and Pages caches those names for `max-age=600`. For up to 10 minutes after a deploy an old worker script can meet the new page. Making them hashed would mean naming PureScript in `Frontend.hs`, against L5. Owner accepted (2026-11-11).
+- **Failed-test text is Language-neutral.** The failed-test message shows plain `input → expected, got actual` for every Language, JavaScript included, and puzzle-check's author messages follow the same form. The plan was silent; owner chose it and confirmed puzzle-check's wording (2026-11-11).
+- **Adding a Language still touches `Puzzle.hs`.** `Puzzle` has one field per Language, the parser reads each Language's table by name, and `languageTable` matches on the names. This is the plan's own "`Puzzle.hs` accepts the known Language tables", but it is a Haskell edit that L5 would prefer not to need. A `Map Text LanguageTable` would remove it; not done (recorded in ticket 33's code review).
+- **Browsers.** Tested in Chrome and Firefox only. Not tested: Safari, touch keyboards, composing input methods, low-end and mobile devices. Owner: enough for now (2026-11-11).
+- **Release assets.** The release has five files (the wasm, the GHC tarball, their two `.sha256` files and `BUILDINFO.json`), not four. The pinned wasm hash is the one the Actions run printed (`95a037c8…`), not the Docker build's (`7e95c64d…`); a rebuild with a different GHC store path gives different wasm bytes.
+- **Two workflows never ran in Actions.** `deploy.yml` (bundle steps, ticket 37) and `purescript-smoke.yml` (ticket 33) were validated locally and with `actionlint` only. Real Pages cache headers and the compiler's download time are still to be measured on the first real deploy.
+
 ## Out of scope
 
 - Rewriting the app's own implementation in another language.
