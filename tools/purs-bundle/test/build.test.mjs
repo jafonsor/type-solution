@@ -81,6 +81,23 @@ test("the names file lists what Data.Array exports", { skip }, () => {
   assert.ok(names.preferred.filter);
 });
 
+test("the names file lists constructors with their type (ticket 39): Maybe, Either, Tuple", { skip }, () => {
+  const { modules, preferred } = JSON.parse(readFileSync(join(out, manifest.core.names.file), "utf8"));
+  const rows = (m) => modules[m].map((r) => r.join(":"));
+  assert.ok(rows("Data.Maybe").includes("Maybe:data") && rows("Data.Maybe").includes("Just:constructor:Maybe") && rows("Data.Maybe").includes("Nothing:constructor:Maybe"));
+  assert.ok(rows("Data.Either").includes("Left:constructor:Either") && rows("Data.Either").includes("Right:constructor:Either"));
+  assert.ok(rows("Data.Tuple").includes("Tuple:data") && rows("Data.Tuple").includes("Tuple:constructor:Tuple"));
+  assert.ok(rows("Data.Maybe").includes("fromMaybe:value")); // functions are as before
+  // a constructor's type is a "data" row in the same module, and every module's constructor names are in 2+ places only when listed
+  for (const [m, list] of Object.entries(modules)) {
+    for (const [name, kind, type] of list) {
+      if (kind === "constructor") assert.ok(list.some(([n, k]) => n === type && k === "data"), `${m}: ${name} has no data row for ${type}`);
+    }
+  }
+  assert.deepEqual(preferred.Pattern, ["Data.String", "Data.List"]);
+  assert.deepEqual(preferred.Nil, ["Data.List"]);
+});
+
 test("a tree built from only the packs of an import's libraries compiles it without rebuilding any library", { skip }, async () => {
   const code = "module Main where\nimport Prelude\nimport Data.Array (take)\nimport Data.Maybe (Maybe(..))\n\nf :: Array Int -> Array Int\nf xs = take 2 xs\n\ng :: Maybe Int\ng = Nothing\n";
   const libs = librariesFor(manifest, importedModules(code));

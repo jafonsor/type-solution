@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { defaultLanguagesDir, languageNamed, loadLanguages } from "../languages.js";
 import { checkBank, promptProblems, symbolCounts } from "../puzzle-check.js";
-import { exportsOf, importNameProblems, parseImportLine, readLibraries } from "../purs-exports.js";
+import { exportsOf, importNameProblems, nameRows, parseImportLine, readLibraries } from "../purs-exports.js";
 import { importLint, libsFolder, loadPinned, pinnedDrift } from "../purs-imports.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -220,6 +220,8 @@ const miniLibs = () => {
   write("base", "Base.Core", "module Base.Core where\n\nimport Data.Unit\n\ndata Box a = Box a | Empty\n\nopen :: forall a. Box a -> a\nopen (Box a) = a\n\nclass Show a where\n  render :: a -> String\n\ninfixr 5 append as <+>\n\ntype Alias = Int\n");
   write("base", "Base.Util", "-- | comment ( with parens\nmodule Base.Util\n  ( keep -- inline comment\n  , Pair(..)\n  , Tag(Red, Blue)\n  , class Named\n  , (<->)\n  , type (~>)\n  , module Base.Core\n  ) where\n\nimport Base.Core\n\nkeep :: Int -> Int\nkeep x = x\n\ndata Pair a b = Pair a b\ndata Tag = Red | Blue | Green\nclass Named a where\n  nameOf :: a -> String\ninfix 4 keep as <->\ninfixr 4 type Pair as ~>\nhidden :: Int\nhidden = 1\n");
   write("base", "Base.Reexport", "module Base.Reexport (keep, open) where\n\nimport Base.Util (keep)\nimport Base.Core (open)\n");
+  write("base", "Base.Abstract", "module Base.Abstract (Secret, Alias, Via(..), Multi(..), Kinded(..)) where\n\nimport Base.Core\n\ndata Secret = Secret Int\ntype Alias = Int\ndata Kinded :: forall k. k -> Type\ndata Kinded a = Kinded\nnewtype Via = Via { inner :: Int }\ndata Multi\n  = One (Box Int)\n  | Two { a :: Int, b :: Int }\n  | Three\n");
+  write("base", "Base.Via", "module Base.Via (Box(..)) where\n\nimport Base.Core\n");
   return readLibraries(root);
 };
 const names = (libs, line) => importNameProblems(libs, parseImportLine(line), "line 1");
@@ -227,10 +229,10 @@ const names = (libs, line) => importNameProblems(libs, parseImportLine(line), "l
 test("the export reader: explicit lists, no lists, re-exports, operators, classes, types", () => {
   const libs = miniLibs();
   const keys = (m) => [...exportsOf(libs, m).keys()].sort();
-  assert.deepEqual(keys("Base.Core"), ["operator:<+>", "type:Alias", "type:Box", "type:Show", "value:open", "value:render"]);
+  assert.deepEqual(keys("Base.Core"), ["operator:<+>", "type:Alias", "type:Box", "type:Show", "value:Box", "value:Empty", "value:open", "value:render"]);
   assert.deepEqual(keys("Base.Util"), [
     "operator:<+>", "operator:<->", "type:Alias", "type:Box", "type:Named", "type:Pair", "type:Show", "type:Tag",
-    "typeOperator:~>", "value:Blue", "value:Red", "value:keep", "value:open", "value:render",
+    "typeOperator:~>", "value:Blue", "value:Box", "value:Empty", "value:Pair", "value:Red", "value:keep", "value:open", "value:render",
   ]);
   assert.equal(exportsOf(libs, "Base.Util").has("value:hidden"), false);
   // A re-export keeps the original's origin, so it is not a second thing.
@@ -251,6 +253,46 @@ test("imported names must be exported by the module they are imported from", () 
   assert.deepEqual(names(libs, "import Elsewhere (anything)"), []); // not in the set: not checked here
 });
 
+test("constructors: read from the declaring module for T(..), listed for T(A, B), none for an abstract type or a synonym", () => {
+  const libs = miniLibs();
+  const entry = (m, key) => exportsOf(libs, m).get(key);
+  assert.deepEqual(entry("Base.Core", "type:Box").constructors, ["Box", "Empty"]); // no export list: all of them
+  assert.deepEqual(entry("Base.Util", "type:Pair").constructors, ["Pair"]);
+  assert.deepEqual(entry("Base.Util", "type:Tag").constructors, ["Red", "Blue"]); // Tag(Red, Blue): its own list
+  assert.deepEqual(entry("Base.Abstract", "type:Secret").constructors, []); // exported without (..)
+  assert.deepEqual(entry("Base.Abstract", "type:Alias").constructors, []);
+  assert.deepEqual(entry("Base.Abstract", "type:Via").constructors, ["Via"]); // newtype
+  assert.deepEqual(entry("Base.Abstract", "type:Multi").constructors, ["One", "Two", "Three"]); // over lines, with a record
+  assert.deepEqual(entry("Base.Abstract", "type:Kinded").constructors, ["Kinded"]); // after a kind signature, as Type.Proxy has
+  assert.deepEqual(entry("Base.Via", "type:Box").constructors, ["Box", "Empty"]); // re-exported: read where it is declared
+  assert.deepEqual(entry("Base.Util", "value:Box").type, "Box");
+  assert.equal(entry("Base.Util", "value:Red").kind, "constructor");
+});
+
+test("the name table's rows: a type with all its constructors is data, each constructor a row with its type; none for a partial export", () => {
+  const libs = miniLibs();
+  const rows = (m) => nameRows(exportsOf(libs, m)).map((r) => r.join(":")).sort();
+  assert.deepEqual(rows("Base.Core"), ["<+>:operator", "Alias:type", "Box:constructor:Box", "Box:data", "Empty:constructor:Box", "Show:type", "open:value", "render:value"]);
+  assert.deepEqual(rows("Base.Abstract").filter((r) => /^(Secret|Alias|Via|One)/.test(r)), ["Alias:type", "One:constructor:Multi", "Secret:type", "Via:constructor:Via", "Via:data"]);
+  // Tag(Red, Blue) lists some constructors, so Tag is a plain type and Red and Blue are not rows (Tag(..) would ask for Green)
+  assert.deepEqual(rows("Base.Util").filter((r) => /^(Tag|Red|Blue)/.test(r)), ["Tag:type"]);
+});
+
+test("imported constructor sets: T(..) needs constructors, T(A, B) needs each of them, an unknown type or constructor fails", () => {
+  const libs = miniLibs();
+  assert.deepEqual(names(libs, "import Base.Core (Box(..))"), []);
+  assert.deepEqual(names(libs, "import Base.Via (Box(..))"), []);
+  assert.deepEqual(names(libs, "import Base.Abstract (Via(..), Multi(..))"), []);
+  assert.deepEqual(names(libs, "import Base.Util (Pair(..), Tag(Red, Blue))"), []);
+  assert.deepEqual(names(libs, "import Base.Core (Box(Box))"), []);
+  assert.deepEqual(names(libs, "import Base.Core (Box(Missing))"), ["line 1: Base.Core does not export a constructor Missing of Box"]);
+  assert.deepEqual(names(libs, "import Base.Util (Tag(Green))"), ["line 1: Base.Util does not export a constructor Green of Tag"]); // declared, not exported
+  assert.deepEqual(names(libs, "import Base.Abstract (Secret(..))"), ["line 1: Base.Abstract exports Secret without constructors, so Secret(..) is not allowed"]);
+  assert.deepEqual(names(libs, "import Base.Abstract (Alias(..))"), ["line 1: Base.Abstract exports Alias without constructors, so Alias(..) is not allowed"]);
+  assert.deepEqual(names(libs, "import Base.Core (Nope(..))"), ["line 1: Base.Core does not export Nope"]);
+  assert.deepEqual(names(libs, "import Base.Core (Box)"), []); // the bare type is still fine
+});
+
 // * The name check, on the real pinned libraries (needs PURS_LIBS)
 
 const haveSources = libsFolder() !== null;
@@ -266,6 +308,19 @@ sourced("a name the module does not export fails when the sources are there", as
   const { failures, notes } = await checkBank(bank);
   assert.deepEqual(failures[0].problems, ["line 2: Data.Array does not export nope"]);
   assert.deepEqual(notes, []);
+});
+
+sourced("a Reference Solution's import of Type(..) is checked against the real libraries: constructors there pass, a constructor set that does not exist fails", () => {
+  const ps = languageNamed("purescript");
+  const lint = (line) => importLint(line, ps).problems;
+  assert.deepEqual(lint("import Data.Maybe (Maybe(..))\nimport Data.Either (Either(..))\nimport Data.Tuple (Tuple(..), fst)\nimport Data.List (List(..), (:))"), []);
+  assert.deepEqual(lint("import Data.Maybe (Maybe(Just, Nothing))"), []);
+  assert.deepEqual(lint("import Data.Maybe (Maybe(Just, Missing))"), ["line 1: Data.Maybe does not export a constructor Missing of Maybe"]);
+  assert.deepEqual(lint("import Data.Maybe (Nope(..))"), ["line 1: Data.Maybe does not export Nope"]);
+  // a type that exists but has no constructors there (a foreign type, a synonym, a class)
+  assert.deepEqual(lint("import Data.Void (Void(..))"), ["line 1: Data.Void exports Void without constructors, so Void(..) is not allowed"]);
+  assert.deepEqual(lint("import Data.Foldable (Foldable(..))"), ["line 1: Data.Foldable exports Foldable without constructors, so Foldable(..) is not allowed"]);
+  assert.deepEqual(lint("import Data.Maybe (Maybe(..)"), ["line 1: only one-line imports are allowed (import M (a, b)): import Data.Maybe (Maybe(..)"]);
 });
 
 sourced("the committed module lists match the library sources", () => {

@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import { languageNamed } from "../puzzle-check/languages.js";
 import { loadPinned } from "../puzzle-check/purs-imports.js";
-import { exportsOf, readLibraries } from "../puzzle-check/purs-exports.js";
+import { exportsOf, nameRows, readLibraries } from "../puzzle-check/purs-exports.js";
 import { openSession, runCompiler, stripAnsi } from "../puzzle-check/purs-runner.js";
 import { encodePack } from "../../static/bundle/pack.mjs";
 
@@ -114,7 +114,7 @@ export async function buildBundle({ wasm, libs, out, log = () => {} }) {
   const names = { packageSet: pinned.packageSet, modules: {}, preferred: JSON.parse(readFileSync(join(language.dir, language.config.nameClashes), "utf8")).preferred };
   for (const module of Object.keys(manifest.modules).sort()) {
     const exported = exportsOf(sources, module);
-    if (exported) names.modules[module] = [...exported.values()].map((e) => [e.name, e.kind]).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+    if (exported) names.modules[module] = nameRows(exported).sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
   }
   const namesBytes = Buffer.from(JSON.stringify(names));
   const namesFile = hashed("names", "json", namesBytes);
