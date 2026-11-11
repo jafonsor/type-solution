@@ -130,8 +130,8 @@ test("a second registered Language appears in the list, with its own mode, signa
     editorMode: () => stubMode, bundle: { start: async () => {} },
   });
   const list = languageList();
-  assert.deepEqual(list.map((l) => l.name), ["javascript", "stub"]);
-  assert.deepEqual(list.map((l) => l.title), ["JavaScript", "Stub"]);
+  assert.deepEqual(list.map((l) => l.name), ["javascript", "purescript", "stub"]);
+  assert.deepEqual(list.map((l) => l.title), ["JavaScript", "PureScript", "Stub"]);
   // Switching swaps only the language extension of the same state.
   const js = languageNamed("javascript");
   const mode = createMode(js);

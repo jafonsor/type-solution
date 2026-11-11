@@ -50,7 +50,7 @@ node tools/purs-bundle/verify.mjs https://jafonsor.github.io/type-solution/
 
 ## What the browser side needs to know
 
-- `static/bundle/bundle.mjs`: fetch `current.json`, then the manifest and the compiler (the "first PureScript pick"), keep them in Cache Storage, delete cached files the new manifest does not name. `part(name)` / `partsWithRequirements(names)` fetch a library's pack only when asked.
+- `static/bundle/bundle.mjs`: `open()` fetches `current.json` and the manifest and deletes cached files the new manifest does not name; `core(name)` fetches that core file alone (the compiler, or the name table, which does not wait for the compiler); everything is kept in Cache Storage. `part(name)` / `partsWithRequirements(names)` fetch a library's pack only when asked. The first PureScript pick (the loader, `static/editor/src/languages/purescript/loader.mjs`) asks for the compiler and the name table.
 - `static/bundle/trigger.mjs`: when to start (first pick of a Language that has a bundle, or page load when it is the remembered one).
 - `static/bundle/purs-tree.mjs`: from the packs of the libraries a Solution imports (`librariesFor(manifest, importedModules(code))`), the file tree and `cache-db.json` for the compiler. **Every file from a pack must report the manifest's `sourceMtime` as its modified time** (the same for sources, externs and JavaScript) and `src/Main.purs` a later one that moves with edits; otherwise the compiler rebuilds the libraries.
 
@@ -60,4 +60,4 @@ node tools/purs-bundle/verify.mjs https://jafonsor.github.io/type-solution/
 PURS_WASM=$(nix build .#purs-core-wasm --no-link --print-out-paths) PURS_LIBS=<checkouts> npm test --prefix tools/purs-bundle
 ```
 
-Without the two variables the build tests (including `test/verify.test.mjs`) skip; the loader and trigger tests (`static/bundle/test/`) always run. `browser/drive.mjs` drives real Chrome (needs `playwright-core`, `esbuild` and `@bjorn3/browser_wasi_shim` in a folder named by `TOOLS`); see its header.
+Without the two variables the build tests (including `test/verify.test.mjs` and `test/browser-checker.test.mjs`, which runs the browser's PureScript Checker, in worker threads, over the built bundle and compares it with puzzle-check's runner on every Puzzle) skip; the loader and trigger tests (`static/bundle/test/`) always run. `browser/drive.mjs` drives real Chrome (needs `playwright-core`, `esbuild` and `@bjorn3/browser_wasi_shim` in a folder named by `TOOLS`); see its header.

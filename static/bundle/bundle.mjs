@@ -9,8 +9,11 @@
 //   every other file        has a content hash in its name, so it can be cached
 //                           for ever (GitHub Pages sets only max-age=600)
 //
-// `core` files are fetched when the bundle is opened (the compiler); a part
-// (a library) only when something asks for it. Cache Storage holds the files
+// Opening the bundle fetches the pointer and the manifest only. A `core` file
+// (the compiler, the name table) is fetched when something asks for it by name
+// (`core(name)`), alone: asking for the small name table never waits for the
+// compiler. A part (a library) is fetched only when something asks for it.
+// Two asks for one file share one download. Cache Storage holds the files
 // of ONE manifest: opening a manifest the cache does not hold deletes every
 // cached file the new manifest does not name (files that kept their hash stay,
 // so a new library version does not re-download the compiler).
@@ -26,14 +29,23 @@ export function createBundle({ fetch, caches, entry, cacheName = "bundle", base 
   let manifest = null;
   let opening = null;
   const parts = new Map(); // name -> promise of decoded pack
+  const downloads = new Map(); // url -> promise of the bytes, while it is being fetched
 
   const getCache = async () => (cache ??= await caches.open(cacheName));
 
   // The bytes of a hashed file: from the cache, else the network (stored).
   // Progress is reported in decoded bytes against the manifest's size.
-  async function file(name, size) {
-    const c = await getCache();
+  function file(name, size) {
     const key = resolve(name);
+    if (!downloads.has(key)) {
+      const pending = fetchFile(name, size, key).finally(() => downloads.delete(key));
+      downloads.set(key, pending);
+    }
+    return downloads.get(key);
+  }
+
+  async function fetchFile(name, size, key) {
+    const c = await getCache();
     const hit = await c.match(key);
     if (hit) return new Uint8Array(await hit.arrayBuffer());
     const res = await fetch(key);
@@ -83,22 +95,23 @@ export function createBundle({ fetch, caches, entry, cacheName = "bundle", base 
     }
     const bytes = await file(manifestFile, 0);
     manifest = JSON.parse(new TextDecoder().decode(bytes));
-    for (const [name, f] of Object.entries(manifest.core)) await file(f.file, f.bytes);
     await prune(manifest, manifestFile);
     return manifest;
   }
 
   return {
-    // Fetches (or finds in the cache) the manifest and the core files; deletes
-    // old versions. Idempotent; a failure is not remembered, so call again to retry.
+    // Fetches (or finds in the cache) the manifest; deletes the cached files
+    // it does not name (old versions). Idempotent; a failure is not remembered, so call again to retry.
     open() {
       opening ??= doOpen().catch((err) => { opening = null; throw err; });
       return opening;
     },
     get manifest() { return manifest; },
-    // A core file's bytes (the compiler's wasm).
+    // A core file's bytes (the compiler's wasm, the name table): this file
+    // only. Callers asking at once share the bytes: do not modify or transfer them.
     async core(name) {
       const m = await this.open();
+      if (!m.core[name]) throw new Error(`no core file named ${name} in the bundle`);
       return file(m.core[name].file, m.core[name].bytes);
     },
     // A part, decoded (see pack.mjs). Fetched on first use only.

@@ -26,19 +26,28 @@
 //                      //   importEdit(doc, offer)  the one change, a CodeMirror
 //                      //                           ChangeSpec, that adds the import
 //                      //                           (merged or a new line)
-//     bundle,          // optional: {start() -> promise}, the Language's lazy
-//                      // download (static/bundle/trigger.mjs decides when)
+//     bundle,          // optional: {start({onProgress}) -> promise}, the Language's
+//                      // lazy download (static/bundle/trigger.mjs decides when);
+//                      // onProgress(percent) is optional to call, whole numbers
+//                      // 0 to 100. The status line reads "Loading <title>
+//                      // compiler…" while it runs, and a failure shows a retry;
+//                      // a check made meanwhile waits for it (src/loading.mjs)
 //   }
 //
 // A Checker is {check(code, fn, tests), stop()}. check returns a promise of
 //   {status: "pass" | "fail" | "error", message, line, column, range?, results?}
-// where results is [{pass, got}] (one per test) for pass and fail, and range
-// is {from, to} document offsets. An error also has kind: "syntax" (doesn't
-// parse or type-check), "timeout" (the check ran too long), "crash" (the
-// runner or the Solution broke) or "stopped" (a newer check or stop() ended
-// it; nobody wants this result). A Checker may keep long-lived state (a
-// compiler worker, a spare); it owns its own timeouts, compile and run.
+// where results is [{pass, got}] (one per test) for pass and fail. An error
+// has kind: "syntax" (doesn't parse), "type" (doesn't type-check), "timeout"
+// (the check ran too long), "crash" (the runner or the Solution broke) or
+// "stopped" (a newer check or stop() ended it; nobody wants this result).
+// A "syntax" or "type" error also has, for the first error: message (one
+// cleaned line, without the position), line and column (both counting from
+// 1), range {from, to} (document offsets, at least one character); and
+// ranges (every error's range, the first included) and all (every error in
+// full, as text for the status line's hover). A Checker may keep long-lived
+// state (a compiler worker, a spare); it owns its own timeouts, compile and run.
 import { javascript } from "./languages/javascript.mjs";
+import { purescript } from "./languages/purescript.mjs";
 
 export const DEFAULT_LANGUAGE = "javascript";
 
@@ -63,3 +72,4 @@ export function languageList() {
 }
 
 registerLanguage(javascript);
+registerLanguage(purescript);

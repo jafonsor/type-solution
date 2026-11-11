@@ -97,6 +97,11 @@ gapsOf ps = keyed (('_', 0) : ps)
 passedIn :: Double -> Run
 passedIn secs = run [Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, CheckStarted 1 js, CheckFinished (at secs) 1 allPass]
 
+-- | A parse error at line 1, column 9 with the underline at offsets 8 to 9.
+syntaxError :: Text -> Outcome
+syntaxError msg = CompileError CompileProblem
+  { kind = Syntax, message = msg, line = 1, column = 9, ranges = [(8, 9)], everything = msg }
+
 pass, failWith :: TestResult
 pass = TestResult { passed = True, got = "\"x\"" }
 failWith = TestResult { passed = False, got = "\"3\"" }
@@ -275,7 +280,7 @@ suite = TestList
       r.outcome @?= Nothing
 
   , "the last outcome stays visible while typing again" ~: do
-      let o = SyntaxError "Unexpected token"
+      let o = syntaxError "Unexpected token"
           r = run [Edited (at 1) "", CheckStarted 1 js, CheckFinished (at 2) 1 o, Edited (at 3) ""]
       r.phase @?= Typing
       r.outcome @?= Just o
@@ -343,9 +348,9 @@ suite = TestList
       elapsed (at 12) r @?= 5
       let c = run (typing <> [CheckStarted 1 js, Escaped (at 2), Escaped (at 3)])
       c.phase @?= Checking
-      let o = SyntaxError "Unexpected token"
+      let o = syntaxError "Unexpected token"
           f = run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 o, Escaped (at 3), Escaped (at 4)])
-      (f.phase, statusOf f) @?= (Checked, "doesn't parse yet")
+      (f.phase, statusOf f) @?= (Checked, "doesn't parse yet: line 1, column 9: Unexpected token")
 
   , "edits and key presses are ignored while paused" ~: do
       let paused = run (typing <> [Escaped (at 4)])
@@ -427,9 +432,30 @@ suite = TestList
       statusOf (run (typing <> [CheckStarted 1 js])) @?= "checking…"
       let after o = statusOf (run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 o]))
       after (Results [pass, failWith, failWith]) @?= "1/3 tests pass"
-      after (SyntaxError "x") @?= "doesn't parse yet"
+      after (syntaxError "x") @?= "doesn't parse yet: line 1, column 9: x"
       after (Crashed "x") @?= "crashed"
       after (TimedOut "x") @?= "timed out"
+
+  , "the status line shows the first error only, as one line with line and column: parse or type-check" ~: do
+      let err k = CompileError CompileProblem
+            { kind = k, message = "Could not match type String with type Int", line = 3, column = 12
+            , ranges = [(1, 2), (5, 6)], everything = "1. line 3, column 12\n  Could not match type\n\n2. line 5, column 1\n  Unknown value x" }
+          after o = run (typing <> [CheckStarted 1 js, CheckFinished (at 2) 1 o])
+      statusOf (after (err TypeCheck)) @?= "doesn't type-check yet: line 3, column 12: Could not match type String with type Int"
+      statusOf (after (err Syntax)) @?= "doesn't parse yet: line 3, column 12: Could not match type String with type Int"
+      -- hovering it shows every error in full; no other line has a hover
+      statusHover (after (err TypeCheck)) @?= "1. line 3, column 12\n  Could not match type\n\n2. line 5, column 1\n  Unknown value x"
+      statusHover (after (Crashed "x")) @?= ""
+      statusHover (run typing) @?= ""
+      statusHover newRun @?= ""
+
+  , "the download takes the status line over while typing or waiting, with a percentage if there is one" ~: do
+      loadText "PureScript" (Loading Nothing) @?= "Loading PureScript compiler…"
+      loadText "PureScript" (Loading (Just 42)) @?= "Loading PureScript compiler… 42%"
+      loadText "PureScript" LoadFailed @?= "Could not load the PureScript compiler."
+      let at' ph = (run typing) { phase = ph }
+      filter (loadShown . at') [NotStarted, Typing, Checking, Checked, Paused, Skipped, Passed]
+        @?= [NotStarted, Typing, Checking, Checked]
 
   , "the pass line gives the time, words per minute and backspaces, and no Esc hint" ~: do
       let r = run [ Edited (at 0) "f", Pressed 0 letter, Pressed 0 Space, Pressed 0 Backspace
@@ -1050,9 +1076,26 @@ suite = TestList
 
   , "a syntax error reply and a timeout reply parse as themselves" ~: do
       parseReply "{\"status\":\"error\",\"kind\":\"syntax\",\"message\":\"Unexpected token (1:8)\",\"line\":1,\"column\":8,\"range\":{\"from\":8,\"to\":9}}"
-        @?= SyntaxError "Unexpected token (1:8)"
+        @?= CompileError CompileProblem
+          { kind = Syntax, message = "Unexpected token (1:8)", line = 1, column = 8, ranges = [(8, 9)], everything = "Unexpected token (1:8)" }
       parseReply "{\"status\":\"error\",\"kind\":\"timeout\",\"message\":\"Stopped after 1.0 s: an infinite loop?\",\"line\":1,\"column\":0}"
         @?= TimedOut "Stopped after 1.0 s: an infinite loop?"
+
+  , "a type error reply parses with its position, every range and the full text" ~: do
+      parseReply "{\"status\":\"error\",\"kind\":\"type\",\"message\":\"Could not match type String with type Int\",\"line\":3,\"column\":12,\"range\":{\"from\":40,\"to\":43},\"ranges\":[{\"from\":40,\"to\":43},{\"from\":60,\"to\":61}],\"all\":\"1. line 3, column 12\\nfull text\"}"
+        @?= CompileError CompileProblem
+          { kind = TypeCheck, message = "Could not match type String with type Int", line = 3, column = 12
+          , ranges = [(40, 43), (60, 61)], everything = "1. line 3, column 12\nfull text" }
+
+  , "a compile error without a position or ranges still parses: line 1, column 1, nothing to underline, the message in full" ~: do
+      parseReply "{\"status\":\"error\",\"kind\":\"type\",\"message\":\"oops\"}"
+        @?= CompileError CompileProblem { kind = TypeCheck, message = "oops", line = 1, column = 1, ranges = [], everything = "oops" }
+
+  , "only a compile error has ranges to underline" ~: do
+      underlineRanges (syntaxError "x") @?= [(8, 9)]
+      underlineRanges (Crashed "x") @?= []
+      underlineRanges (TimedOut "x") @?= []
+      underlineRanges (Results [pass]) @?= []
 
   , "an unreadable reply is a crash, not a pass" ~: do
       case parseReply "nonsense" of

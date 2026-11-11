@@ -219,11 +219,14 @@ test("mode: Enter indents like the last line, and one more after where, do, of, 
 
 // --- L5: nothing outside PureScript's own module names PureScript ---------------------
 
-test("seam rule: no file in src/ except languages/purescript.mjs names PureScript", () => {
+test("seam rule: only languages/purescript.mjs and languages/purescript/ name PureScript, and the registry only to list it", () => {
   const dir = new URL("../src/", import.meta.url);
   const files = [];
   const walk = (d) => { for (const e of readdirSync(d, { withFileTypes: true })) e.isDirectory() ? walk(new URL(e.name + "/", d)) : files.push(new URL(e.name, d)); };
   walk(dir);
   const naming = files.filter((f) => /purescript/i.test(readFileSync(f, "utf8"))).map((f) => f.pathname.replace(dir.pathname, ""));
-  assert.deepEqual(naming, ["languages/purescript.mjs"]);
+  assert.deepEqual(naming.filter((f) => !f.startsWith("languages/purescript")), ["languages.mjs"]);
+  // ... and languages.mjs only imports the Language and registers it.
+  const lines = readFileSync(new URL("languages.mjs", dir), "utf8").split("\n").filter((l) => /purescript/i.test(l) && !l.trim().startsWith("//"));
+  assert.deepEqual(lines, ['import { purescript } from "./languages/purescript.mjs";', "registerLanguage(purescript);"]);
 });

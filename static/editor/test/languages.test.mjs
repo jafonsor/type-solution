@@ -49,10 +49,14 @@ test("JavaScript: code that doesn't parse fails at once, with line, column and r
   const r = await c.check("let x = ;\n", "f", tests);
   assert.equal(r.status, "error");
   assert.equal(r.kind, "syntax");
-  assert.match(r.message, /Unexpected token \(1:8\)/);
+  // The message is acorn's without its "(1:8)", which line and column say
+  // (counting from 1); `all` keeps acorn's own text for the hover.
+  assert.equal(r.message, "Unexpected token");
+  assert.equal(r.all, "Unexpected token (1:8)");
   assert.equal(r.line, 1);
-  assert.equal(r.column, 8);
+  assert.equal(r.column, 9);
   assert.deepEqual(r.range, { from: 8, to: 9 });
+  assert.deepEqual(r.ranges, [{ from: 8, to: 9 }]);
   assert.ok(made.every((w) => w.sent === undefined));
 });
 
@@ -185,7 +189,7 @@ test("a registered Language is found by name; JavaScript stays the default", () 
   registerLanguage(language);
   assert.equal(languageNamed("fake"), language);
   assert.equal(languageNamed("nope"), javascript);
-  assert.deepEqual(languageNames().sort(), ["fake", "javascript"]);
+  assert.deepEqual(languageNames().sort(), ["fake", "javascript", "purescript"]);
 });
 
 test("swapping Language swaps only the editor mode extension", () => {

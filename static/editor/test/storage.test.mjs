@@ -170,3 +170,37 @@ test("a stripped record that switched Language keeps its language and peeked fla
   assert.equal(saveRun(s, inLanguage(3, 100, "javascript")), true);
   assert.deepEqual(stored(s)[0], { ...record(2, 0), language: "purescript", peeked: true });
 });
+
+// --- Options ------------------------------------------------------------------
+
+import { loadOptions, saveOption, optionsKey } from "../src/storage.mjs";
+
+test("options: a missing key, bad JSON, a non-object and a missing or odd field all take the default (underlines on)", () => {
+  for (const stored of [undefined, "not json", "[]", "null", "3", "{}", '{"underlines":"yes"}', '{"other":1}']) {
+    const s = fakeStorage(1e6, stored === undefined ? {} : { [optionsKey]: stored });
+    assert.deepEqual(loadOptions(s), { underlines: true }, String(stored));
+  }
+  assert.deepEqual(loadOptions({ getItem() { throw new Error("blocked"); } }), { underlines: true });
+});
+
+test("options: a stored underlines value is read", () => {
+  assert.equal(loadOptions(fakeStorage(1e6, { [optionsKey]: '{"underlines":false}' })).underlines, false);
+  assert.equal(loadOptions(fakeStorage(1e6, { [optionsKey]: '{"underlines":true}' })).underlines, true);
+});
+
+test("options: saving keeps the fields it does not know and writes underlines first", () => {
+  const s = fakeStorage(1e6, { [optionsKey]: '{"theme":"dark","underlines":true,"n":[1]}' });
+  assert.equal(saveOption(s, "underlines", false), true);
+  assert.equal(s.getItem(optionsKey), '{"underlines":false,"theme":"dark","n":[1]}');
+  const fresh = fakeStorage(1e6);
+  saveOption(fresh, "underlines", false);
+  assert.equal(fresh.getItem(optionsKey), '{"underlines":false}');
+});
+
+test("options: saving over something that is not an object replaces it; a full storage does not throw", () => {
+  const s = fakeStorage(1e6, { [optionsKey]: "garbage" });
+  saveOption(s, "underlines", true);
+  assert.equal(s.getItem(optionsKey), '{"underlines":true}');
+  const full = fakeStorage(5);
+  assert.equal(saveOption(full, "underlines", false), false);
+});

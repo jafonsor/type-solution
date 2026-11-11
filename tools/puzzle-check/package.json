@@ -8,7 +8,7 @@
   "scripts": {
     "check": "node check.js",
     "solutions": "node run-solutions.js",
-    "test": "node --test test/check.test.js test/purs.test.js test/languages.test.js"
+    "test": "node --test test/check.test.js test/purs.test.js test/languages.test.js test/browser-twin.test.js"
   },
   "dependencies": {
     "smol-toml": "1.9.0"

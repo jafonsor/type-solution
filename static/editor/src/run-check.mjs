@@ -18,7 +18,7 @@ export function createCheckSession(language, env) {
         (result) => { if (mine === current) onReply(JSON.stringify(result)); },
         (err) => {
           if (mine !== current) return;
-          onReply(JSON.stringify({ status: "error", kind: "crash", message: String(err), line: 1, column: 0 }));
+          onReply(JSON.stringify({ status: "error", kind: "crash", message: String(err), line: 1, column: 1 }));
         },
       );
     },

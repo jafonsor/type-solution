@@ -2,7 +2,11 @@
 -- | The status line below the editor: what the Run is doing, in words.
 module Common.Status
   ( statusText
+  , statusHover
   , secondsText
+  , Load (..)
+  , loadText
+  , loadShown
   ) where
 
 import Data.Text (Text)
@@ -24,7 +28,7 @@ statusText p h r = case r.phase of
   Checking -> "checking…"
   Checked -> case r.outcome of
     Just (Results rs) -> tshow (length (filter (.passed) rs)) <> "/" <> tshow (length rs) <> " tests pass"
-    Just (SyntaxError _) -> "doesn't parse yet"
+    Just (CompileError e) -> compileText e
     Just (Crashed _) -> "crashed"
     Just (TimedOut _) -> "timed out"
     Nothing -> ""
@@ -43,6 +47,38 @@ statusText p h r = case r.phase of
       NewBest was -> "New best (was " <> secondsText (secs was) <> (if was.peeked then ", peeked" else "") <> ")."
       NotBest best -> "Best: " <> peekedTime best.peeked (secs best) <> "."
     secs rr = realToFrac rr.duration
+
+-- | The first error as one line: the verdict, where, and what.
+compileText :: CompileProblem -> Text
+compileText p = verdict <> ": line " <> tshow p.line <> ", column " <> tshow p.column <> ": " <> p.message
+  where
+    verdict = case p.kind of
+      Syntax -> "doesn't parse yet"
+      TypeCheck -> "doesn't type-check yet"
+
+-- | What hovering the status line shows: every error in full, for a compile
+-- error; nothing for any other line.
+statusHover :: Run -> Text
+statusHover r = case (r.phase, r.outcome) of
+  (Checked, Just (CompileError p)) -> p.everything
+  _ -> ""
+
+-- | What a Language's download is doing, while it is not done.
+data Load = Loading (Maybe Int) | LoadFailed
+  deriving stock (Eq, Show)
+
+-- | The status line while a Language's compiler downloads, given the
+-- Language's title: with a percentage if there is one.
+loadText :: Text -> Load -> Text
+loadText title = \case
+  Loading p -> "Loading " <> title <> " compiler…" <> maybe "" (\n -> " " <> tshow n <> "%") p
+  LoadFailed -> "Could not load the " <> title <> " compiler."
+
+-- | Whether the download takes the status line over: while the player is
+-- typing or waiting for a check, not once the Run is Paused, Skipped or Passed
+-- (those lines are about the Run, and the Run is not waiting on the download).
+loadShown :: Run -> Bool
+loadShown r = r.phase `elem` [NotStarted, Typing, Checking, Checked]
 
 -- | A time with the plain word "peeked" after it when the Run peeked at the
 -- Reference Solution; it is shown wherever the Run's time is.

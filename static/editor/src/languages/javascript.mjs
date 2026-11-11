@@ -3,60 +3,51 @@
 // shim is here: the acorn parse, the test-runner worker, the CodeMirror mode.
 import * as acorn from "acorn";
 import { javascript as javascriptMode } from "@codemirror/lang-javascript";
-import { createChecker as createWorkerPool } from "../checker.mjs";
+import { createSandbox, timeoutMessage } from "../sandbox.mjs";
 
 const RUN_TIMEOUT_MS = 1000; // languages/javascript/language.json: timeouts.runMs
 
 // The parser's verdict on the code: null, or a Checker error result. The
-// message is acorn's own, "(line:column)" suffix included, as it always was.
+// message is acorn's without its "(line:column)" suffix (the status line says
+// where, from `line` and `column`, which count from 1); `all` is acorn's own text.
 function parseError(code) {
   try {
     acorn.parse(code, { ecmaVersion: "latest", sourceType: "script" });
     return null;
   } catch (err) {
     const pos = err.pos ?? 0;
+    const range = { from: pos, to: Math.max(err.raisedAt ?? pos, pos + 1) };
     return {
-      status: "error", kind: "syntax", message: err.message,
-      line: err.loc?.line ?? 1, column: err.loc?.column ?? 0,
-      range: { from: pos, to: Math.max(err.raisedAt ?? pos, pos + 1) },
+      status: "error", kind: "syntax", message: err.message.replace(/\s*\(\d+:\d+\)$/, ""), all: err.message,
+      line: err.loc?.line ?? 1, column: (err.loc?.column ?? 0) + 1,
+      range, ranges: [range],
     };
   }
 }
 
-// The Checker: code that doesn't parse fails at once; the rest runs on a
-// fresh worker (the spare, replaced by a new one), stopped after the run
-// timeout. `env` is {Worker, url}: the browser's Worker class (a test can
-// pass a fake) and the address of the runner script (static/src/js/runner.js;
-// its request/reply protocol, strings in and out, is private to this file).
+// The Checker: code that doesn't parse fails at once; the rest runs in the
+// shared sandbox (../sandbox.mjs: a fresh worker, the spare replaced by a new
+// one, stopped after the run timeout). `env` is {Worker, url}: the browser's
+// Worker class (a test can pass a fake) and the address of the runner script
+// (static/src/js/runner.js; its request/reply protocol, strings in and out, is
+// private to this file).
 function createChecker({ Worker, url }) {
-  const pool = createWorkerPool(Worker, url);
-  let pending = null; // {resolve, timer} of the check in flight
-
-  function settle(result) {
-    if (!pending) return;
-    const { resolve, timer } = pending;
-    pending = null;
-    clearTimeout(timer);
-    pool.stop();
-    resolve(result);
-  }
+  const sandbox = createSandbox({ Worker, url, timeoutMs: RUN_TIMEOUT_MS });
 
   function stop() {
-    settle({ status: "error", kind: "stopped", message: "stopped", line: 1, column: 0 });
+    sandbox.stop();
   }
 
-  function check(code, fn, tests) {
+  async function check(code, fn, tests) {
     stop(); // a newer check ends the older one
     const bad = parseError(code);
-    if (bad) return Promise.resolve(bad);
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => settle({
-        status: "error", kind: "timeout", line: 1, column: 0,
-        message: "Stopped after " + (RUN_TIMEOUT_MS / 1000).toFixed(1) + " s: an infinite loop?",
-      }), RUN_TIMEOUT_MS);
-      pending = { resolve, timer };
-      pool.start(JSON.stringify({ code, fn, tests }), (reply) => settle(fromReply(reply)));
-    });
+    if (bad) return bad;
+    const outcome = await sandbox.run(JSON.stringify({ code, fn, tests }));
+    if (outcome.kind === "stopped") return { status: "error", kind: "stopped", message: "stopped", line: 1, column: 1 };
+    if (outcome.kind === "timeout") {
+      return { status: "error", kind: "timeout", line: 1, column: 1, message: timeoutMessage(RUN_TIMEOUT_MS) };
+    }
+    return fromReply(outcome.text);
   }
 
   return { check, stop };
@@ -69,10 +60,10 @@ function fromReply(reply) {
   if (r?.kind === "results") {
     const results = r.results;
     const pass = results.length > 0 && results.every((t) => t.pass);
-    return { status: pass ? "pass" : "fail", message: "", line: 1, column: 0, results };
+    return { status: pass ? "pass" : "fail", message: "", line: 1, column: 1, results };
   }
   return {
-    status: "error", kind: "crash", line: 1, column: 0,
+    status: "error", kind: "crash", line: 1, column: 1,
     message: r?.kind === "error" ? r.message : "The test runner sent an unreadable reply.",
   };
 }

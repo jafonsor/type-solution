@@ -1,6 +1,6 @@
 # PureScript: calling convention
 
-How a test's JSON `args` and `expected` become a call and a comparison. Settled by compiling every Reference Solution with `purs` 0.15.16 (spec "Calling convention"; tickets 23 and 35). The checker is `purs-core.wasm`; puzzle-check's runner is `tools/puzzle-check/purs-runner.js`, the browser worker must behave the same.
+How a test's JSON `args` and `expected` become a call and a comparison. Settled by compiling every Reference Solution with `purs` 0.15.16 (spec "Calling convention"; tickets 23 and 35). The checker is `purs-core.wasm`; puzzle-check's runner is `tools/puzzle-check/purs-runner.js`, and the browser Checker behaves the same: `static/editor/src/languages/purescript/calling.mjs` (the constraint kinds and the typed path's Harness module) and `sandbox.js` (the call, the pass rule, Tuple handling). `tools/puzzle-check/test/browser-twin.test.js` compares the two on every Puzzle and on odd inputs, so they cannot drift.
 
 **Calls are curried.** `f(a)(b)(c)`. Results are compared as JSON, with `Tuple` converted to a JSON pair (the generated JavaScript class is named `Tuple` with `value0`, `value1`; a bundler that renames classes breaks the check).
 

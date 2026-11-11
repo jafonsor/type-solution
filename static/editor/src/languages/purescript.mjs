@@ -1,9 +1,12 @@
-// PureScript's editor mode (seam 2) and import rules (seam 3). Nothing outside
-// this file names PureScript (L5). The Checker (seam 1) and the registration
-// in the app's Language list are ticket 31's: it builds the Language value
-// from `purescriptEditorSeams` below.
+// PureScript, a Language: the value the registry lists (languages.mjs) with its
+// four seams. Its Checker is purescript/check.mjs, its editor mode and import
+// rules are in this file, its bundle is purescript/loader.mjs. Nothing outside
+// this file and purescript/ names PureScript (L5).
 import { StreamLanguage } from "@codemirror/language";
 import { haskell } from "@codemirror/legacy-modes/mode/haskell";
+import { createBundle } from "../../../bundle/bundle.mjs";
+import { createLoader } from "./purescript/loader.mjs";
+import { createPurescriptChecker } from "./purescript/check.mjs";
 
 // --- Editor mode: the bundled Haskell mode, with PureScript's differences ---
 
@@ -206,3 +209,42 @@ export function namesFromBundle(bundle) {
 export function purescriptEditorSeams({ loadNames }) {
   return { editorMode: purescriptMode, importRules: purescriptImportRules({ loadNames }) };
 }
+
+// --- The Language -------------------------------------------------------------
+
+const COMPILE_TIMEOUT_MS = 5000; // languages/purescript/language.json: timeouts.compileMs
+const RUN_TIMEOUT_MS = 1000;     // timeouts.runMs
+
+// One loader per page, made on first use: the bundle is addressed relative to
+// the page's own <base> (`purs/current.json`; the site exports it there).
+let loader = null;
+function pageLoader() {
+  return (loader ??= createLoader({ createBundle, entry: "purs/current.json", base: globalThis.document?.baseURI, cacheName: "purs-bundle" }));
+}
+
+// The name table, read from the bundle without waiting for the compiler.
+const bundleFacade = { core: (name) => pageLoader().bundle.core(name) };
+
+// The scripts beside the runner script `url` (static/src/js/): the compiler
+// worker and the sandbox's runner.
+const sibling = (url, name) => new URL(name, new URL(url, globalThis.location?.href ?? "http://localhost/")).href;
+
+export const purescript = {
+  name: "purescript",
+  title: "PureScript",
+  folder: "languages/purescript",
+  settings: { runTimeoutMs: RUN_TIMEOUT_MS, compileTimeoutMs: COMPILE_TIMEOUT_MS },
+  // Seam 1. `env` is {Worker, url}, `url` being the address of the JavaScript
+  // runner script; the compiler worker and the PureScript runner sit beside it.
+  createChecker: ({ Worker, url }) => createPurescriptChecker({
+    Worker,
+    compilerUrl: sibling(url, "purs-compiler.js"),
+    sandboxUrl: sibling(url, "purs-sandbox.js"),
+    loader: pageLoader(),
+    limits: { compileMs: COMPILE_TIMEOUT_MS, runMs: RUN_TIMEOUT_MS },
+  }),
+  // Seams 2 and 3.
+  ...purescriptEditorSeams({ loadNames: namesFromBundle(bundleFacade) }),
+  // The lazy download; static/bundle/trigger.mjs decides when it starts.
+  bundle: { start: (options) => pageLoader().start(options) },
+};

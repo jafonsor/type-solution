@@ -16,6 +16,11 @@ module Frontend.Js
   , setReadOnly
   , setLanguage
   , nextLanguage
+  , setErrors
+  , setUnderlines
+  , underlinesOn
+  , watchLoading
+  , retryLoading
   , resetEditor
   , focusEditor
   , focusElement
@@ -97,6 +102,39 @@ setLanguage (Editor e) (Language name) = (e # ("setLanguage" :: Text) $ [name]) 
 -- | The Language Alt+L would pick: the one after the current, wrapping round.
 nextLanguage :: Editor -> JSM Language
 nextLanguage (Editor e) = Language <$> ((e # ("nextLanguage" :: Text) $ ()) >>= fromJSValUnchecked)
+
+-- | Underline these ranges (document offsets, @(from, to)@) under the text: a
+-- finished check's errors. The next edit, or a Language switch, clears them.
+-- With the underlines option off they are kept but not drawn.
+setErrors :: Editor -> [(Int, Int)] -> JSM ()
+setErrors (Editor e) ranges = void $ e # ("setErrors" :: Text) $ [[ [from, to] | (from, to) <- ranges ]]
+
+-- | The "Show error underlines" option: kept in this browser
+-- (@type-solution.options@) and applied at once.
+setUnderlines :: Editor -> Bool -> JSM ()
+setUnderlines (Editor e) on = void $ e # ("setUnderlines" :: Text) $ [on]
+
+-- | The option as it is now (on unless the player turned it off).
+underlinesOn :: Editor -> JSM Bool
+underlinesOn (Editor e) = (e # ("underlines" :: Text) $ ()) >>= fromJSValUnchecked
+
+-- | Hear about each Language's download: @(name, state, percent)@ with the
+-- state @"loading"@, @"ready"@ or @"failed"@ and the percent a whole number
+-- while loading, @-1@ when there is none. Told at once of what has begun.
+watchLoading :: (Text -> Text -> Int -> JSM ()) -> JSM ()
+watchLoading onChange = do
+  changed <- function \_ _ args -> case args of
+    [a, b, c] -> do
+      name <- fromJSValUnchecked a
+      state <- fromJSValUnchecked b
+      percent <- fromJSValUnchecked c
+      onChange name state percent
+    _ -> pure ()
+  void $ jsg ("TypeSolution" :: Text) # ("watchLoading" :: Text) $ [changed]
+
+-- | Try a Language's failed download again.
+retryLoading :: Language -> JSM ()
+retryLoading (Language name) = void $ jsg ("TypeSolution" :: Text) # ("retryLoading" :: Text) $ [name]
 
 -- | A new Run: every Language's draft goes and the editor is empty.
 resetEditor :: Editor -> JSM ()

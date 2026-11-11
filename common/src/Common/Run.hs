@@ -6,6 +6,9 @@ module Common.Run
   , Phase (..)
   , Event (..)
   , Outcome (..)
+  , ErrorKind (..)
+  , CompileProblem (..)
+  , underlineRanges
   , TestResult (..)
   , Key (..)
   , keyChar
@@ -66,7 +69,8 @@ data Phase
 
 -- | What one check of the Solution against the Puzzle's tests found.
 data Outcome
-  = SyntaxError Text
+  = CompileError CompileProblem
+    -- ^ The Solution doesn't parse or doesn't type-check.
   | Crashed Text
     -- ^ The Solution threw before any test ran, or isn't a function.
   | TimedOut Text
@@ -75,6 +79,35 @@ data Outcome
   | Results [TestResult]
     -- ^ One per test, in the Puzzle's order.
   deriving stock (Eq, Show)
+
+-- | Which compile error: the code doesn't parse, or it doesn't type-check
+-- (the status line says "doesn't parse yet" or "doesn't type-check yet").
+data ErrorKind = Syntax | TypeCheck
+  deriving stock (Eq, Show)
+
+-- | What the Language's Checker found wrong with the Solution (see
+-- static/editor/src/languages.mjs).
+data CompileProblem = CompileProblem
+  { kind :: ErrorKind
+  , message :: Text
+    -- ^ The first error, as one cleaned line, without its position.
+  , line :: Int
+  , column :: Int
+    -- ^ Both count from 1.
+  , ranges :: [(Int, Int)]
+    -- ^ Every error's range in the document, @(from, to)@ offsets, for the
+    -- underlines.
+  , everything :: Text
+    -- ^ Every error in full, for the hover on the status line.
+  }
+  deriving stock (Eq, Show)
+
+-- | The ranges to underline for an outcome: those of a compile error, none
+-- otherwise.
+underlineRanges :: Outcome -> [(Int, Int)]
+underlineRanges = \case
+  CompileError p -> p.ranges
+  _ -> []
 
 data TestResult = TestResult
   { passed :: Bool
@@ -518,9 +551,10 @@ checkRequest p src = T.decodeUtf8 $ LBS.toStrict $ Aeson.encode $ object
 
 -- | The Language Checker's result (static/editor/src/languages.mjs):
 -- @{status: "pass" | "fail", results: [{pass, got}]}@, or
--- @{status: "error", kind: "syntax" | "timeout" | other, message}@, with
--- line, column and range the status line will use later. Anything else
--- counts as a crash.
+-- @{status: "error", kind: "syntax" | "type" | "timeout" | other, message}@;
+-- a syntax or type error also has @line@, @column@, @range@ (@{from, to}@),
+-- @ranges@ (a list of those) and @all@ (every error in full), each optional.
+-- Anything else counts as a crash.
 parseReply :: Text -> Outcome
 parseReply txt =
   case Aeson.decodeStrict (T.encodeUtf8 txt) >>= parseMaybe reply of
@@ -532,10 +566,40 @@ parseReply txt =
       ("pass" :: Text) -> Results <$> o .: "results"
       "fail" -> Results <$> o .: "results"
       "error" -> o .: "kind" >>= \case
-        ("syntax" :: Text) -> SyntaxError <$> o .: "message"
+        ("syntax" :: Text) -> CompileError <$> problem Syntax o
+        "type" -> CompileError <$> problem TypeCheck o
         "timeout" -> TimedOut <$> o .: "message"
         _ -> Crashed <$> o .: "message"
       _ -> fail "unknown status"
+
+    problem :: ErrorKind -> Aeson.Object -> Parser CompileProblem
+    problem k o = do
+      msg <- o .: "message"
+      ln <- fromMaybe 1 <$> o .:? "line"
+      col <- fromMaybe 1 <$> o .:? "column"
+      first <- o .:? "range"
+      more <- o .:? "ranges"
+      full <- o .:? "all"
+      pure CompileProblem
+        { kind = k, message = msg, line = ln, column = col
+        , ranges = case (more, first) of
+            (Just rs, _) -> map unRange rs
+            (Nothing, Just r) -> [unRange r]
+            _ -> []
+        , everything = fromMaybe msg full
+        }
+
+-- | A @{from, to}@ range in a Checker's result.
+newtype Range = Range (Int, Int)
+
+unRange :: Range -> (Int, Int)
+unRange (Range r) = r
+
+instance FromJSON Range where
+  parseJSON = withObject "range" \o -> do
+    from <- o .: "from"
+    to <- o .: "to"
+    pure (Range (from, to))
 
 instance FromJSON TestResult where
   parseJSON = withObject "TestResult" \o ->

@@ -73,9 +73,16 @@ runWidget workerUrl = mdo
   (eEscape, fireEscape) <- newTriggerEvent
   (eReply, fireReply) <- newTriggerEvent
   (eKey, fireKey) <- newTriggerEvent
+  (eLoad, fireLoad) <- newTriggerEvent
   editor <- liftJSM $ createEditor (_element_raw box)
     (liftIO . fireCode) (liftIO (fireEscape ())) (\t k -> liftIO (fireKey (Pressed t k)))
     (liftIO (fireCycle ()))
+  -- What each Language's download is doing, from the shim: the status line
+  -- says so while it is not done.
+  liftJSM $ watchLoading \n s p -> liftIO (fireLoad (n, s, p))
+  dLoad <- foldDyn (\(n, s, p) -> Map.alter (const (loadOf s p)) n) Map.empty eLoad
+  -- The underlines option, as the page opens.
+  underlinesNow <- liftJSM (underlinesOn editor)
   -- One Checker per Language, made when first used and kept (it may hold a
   -- worker); a check goes to the Checker of the Language it was typed in.
   checkers <- liftIO (newIORef Map.empty)
@@ -145,6 +152,11 @@ runWidget workerUrl = mdo
       liftIO (fireReply (n, l, reply))
     pure [CheckStarted n (languageName l)]
 
+  -- A finished check's errors are underlined, if it was of the draft shown
+  -- (the shim clears them on the next edit).
+  performEvent_ $ ffor (attach (current dLanguage) eReply) \(current', (_, l, reply)) ->
+    liftJSM $ setErrors editor (if l == current' then underlineRanges (parseReply reply) else [])
+
   eFinished <- performEvent $ ffor eReply \(n, l, reply) -> do
     liftJSM (stopCheck =<< checkerFor l)
     t <- liftIO getCurrentTime
@@ -188,11 +200,29 @@ runWidget workerUrl = mdo
   dNow <- holdDyn t0 (_tickInfo_lastUTC <$> tick)
   let dElapsed = zipDynWith elapsed dNow dRun
 
-  elClass "div" "status" do
+  -- While the shown Language's compiler downloads (or failed to), that is
+  -- the line; otherwise what the Run is doing. Hovering it shows every
+  -- error in full.
+  let titles = Map.fromList [ (n, t) | (Language n, t) <- available ]
+      dLoadShown = (\l loads r -> if loadShown r then Map.lookup (languageName l) loads else Nothing)
+        <$> dLanguage <*> dLoad <*> dRun
+      dLine = (\l p h r ld -> case ld of
+                  Just st -> loadText (Map.findWithDefault (languageName l) (languageName l) titles) st
+                  Nothing -> statusText p h r)
+        <$> dLanguage <*> dPuzzle <*> dHistoryBefore <*> dRun <*> dLoadShown
+      dHover = (\r ld -> if ld == Nothing then statusHover r else "") <$> dRun <*> dLoadShown
+  eRetry <- elClass "div" "status" do
     elClass "span" "clock" $ dynText (secondsText <$> dElapsed)
-    elClass "span" "phase" $ dynText (statusText <$> dPuzzle <*> dHistoryBefore <*> dRun)
+    elDynAttr "span" (ffor dHover \t -> "class" =: "phase" <> (if T.null t then mempty else "title" =: t)) $ dynText dLine
+    switchHold never =<< dyn (ffor dLoadShown \case
+      Just LoadFailed -> do
+        (b, _) <- elAttr' "button" ("type" =: "button" <> "class" =: "retry") $ text "Retry"
+        pure (domEvent Click b)
+      _ -> pure never)
+  performEvent_ $ liftJSM . retryLoading <$> tag (current dLanguage) eRetry
 
-  (eChoice, firstButton, menuBox) <- menu
+  (eChoice, firstButton, menuBox, eUnderlines) <- menu underlinesNow
+  performEvent_ $ liftJSM . setUnderlines editor <$> eUnderlines
 
   -- Opening the menu freezes the editor and focuses the first button;
   -- closing it hands the focus back to the editor.
@@ -254,6 +284,13 @@ signatureText l p = maybe "" (.signature) (languageTable (languageName l) p)
 languageName :: Language -> Text
 languageName (Language n) = n
 
+-- | A download state from the shim, or nothing once it is done.
+loadOf :: Text -> Int -> Maybe Load
+loadOf state percent = case state of
+  "loading" -> Just (Loading (if percent >= 0 then Just percent else Nothing))
+  "failed" -> Just LoadFailed
+  _ -> Nothing
+
 -- | The Language's Checker, made on first use and then kept.
 cachedChecker :: IORef (Map.Map Text Checker) -> Text -> Language -> JSM Checker
 cachedChecker ref url l = do
@@ -267,19 +304,34 @@ cachedChecker ref url l = do
 
 data Choice = NewRandom | Repeat
 
--- | The menu's two buttons, hidden until the Run opens it.
+-- | The menu, hidden until the Run opens it: its two buttons, then the "Show
+-- error underlines" checkbox (a native one: Tab reaches it after the buttons
+-- and Space flips it). Gives the choice, the first button (to focus), the
+-- menu's element and the checkbox's changes.
 menu
   :: (DomBuilder t m, DomBuilderSpace m ~ GhcjsDomSpace, PostBuild t m)
-  => m (Event t Choice, RawElement GhcjsDomSpace, RawElement GhcjsDomSpace)
-menu = do
-  (box, (eNew, newEl, eRepeat)) <- elAttr' "div" ("class" =: "menu" <> "hidden" =: "") do
+  => Bool -> m (Event t Choice, RawElement GhcjsDomSpace, RawElement GhcjsDomSpace, Event t Bool)
+menu underlinesInitially = do
+  (box, (eNew, newEl, eRepeat, eUnderlines)) <- elAttr' "div" ("class" =: "menu" <> "hidden" =: "") do
     (n, _) <- iconButton "New random Puzzle" skipNextIcon
     (r, _) <- iconButton "Repeat Puzzle" repeatIcon
-    pure (domEvent Click n, _element_raw n, domEvent Click r)
-  pure (leftmost [NewRandom <$ eNew, Repeat <$ eRepeat], newEl, _element_raw box)
+    cb <- elClass "label" "option" do
+      c <- inputElement (checkboxConfig underlinesInitially)
+      text "Show error underlines"
+      pure c
+    pure (domEvent Click n, _element_raw n, domEvent Click r, _inputElement_checkedChange cb)
+  pure (leftmost [NewRandom <$ eNew, Repeat <$ eRepeat], newEl, _element_raw box, eUnderlines)
   where
     iconButton name = elAttr' "button"
       ("type" =: "button" <> "title" =: name <> "aria-label" =: name)
+
+-- | A checkbox, checked or not to begin with.
+checkboxConfig :: forall t. Reflex t => Bool -> InputElementConfig EventResult t GhcjsDomSpace
+checkboxConfig on = (def :: InputElementConfig EventResult t GhcjsDomSpace)
+  { _inputElementConfig_initialChecked = on
+  , _inputElementConfig_elementConfig =
+      (def :: ElementConfig EventResult t GhcjsDomSpace) { _elementConfig_initialAttributes = "type" =: "checkbox" }
+  }
 
 -- | "Skip next": a play triangle against a bar.
 skipNextIcon :: (DomBuilder t m, PostBuild t m) => m ()
@@ -318,7 +370,8 @@ feedback puzzle r = case r.outcome of
       elClass "code" "expected" $ text want
       text ", got "
       elClass "code" "got" $ text actual
-  Just (SyntaxError msg) -> elClass "div" "failure" $ text ("Syntax error: " <> msg)
+  -- A compile error is on the status line (and its hover), and underlined.
+  Just (CompileError _) -> blank
   Just (Crashed msg) -> elClass "div" "failure" $ text msg
   Just (TimedOut msg) -> elClass "div" "failure" $ text msg
   Nothing -> blank

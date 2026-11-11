@@ -28,6 +28,12 @@
 //                             // the name is the current or an unknown one, or the
 //                             // editor is read-only: no Language switch then).
 //   editor.nextLanguage();    // the name Alt+L would pick
+//   editor.setErrors([[from, to], ...]); // underline a finished check's error
+//                             // ranges (document offsets); an edit or a Language
+//                             // switch clears them
+//   editor.setUnderlines(on); // the "Show error underlines" option: saved in
+//                             // localStorage["type-solution.options"], applied now
+//   editor.underlines();      // the option as it is
 //   editor.reset();           // a new Run: every draft goes, the document is empty
 //   editor.focus();
 //   TypeSolution.focus(element)     // focus a page element, e.g. a button
@@ -36,6 +42,11 @@
 //                                   // (storage.mjs: what happens when it's full)
 //   TypeSolution.loadRuns()         // the stored Runs as JSON text, "[]" if none
 //                                   // or storage can't be read; never throws
+//   TypeSolution.watchLoading((name, state, percent) => ...)
+//                                   // a Language's download: state "loading"
+//                                   // (percent 0 to 100, or -1), "ready" or
+//                                   // "failed"; told at once of what has begun
+//   TypeSolution.retryLoading(name) // try a failed download again
 //   TypeSolution.createChecker(url, language)
 //                                   // the Language's Checker (languages.mjs;
 //                                   // JavaScript if omitted or unknown), given
@@ -60,6 +71,8 @@ import { popupOpen, acceptsPopup, closeCompletion } from "./import-popup.mjs";
 import { completionStatus } from "@codemirror/autocomplete";
 import { createLanguageChoice } from "./language-choice.mjs";
 import { createBundleTrigger } from "../../bundle/trigger.mjs";
+import { underlines, setErrors, setUnderlinesShown } from "./underlines.mjs";
+import { createLoadingStore, reportingStart } from "./loading.mjs";
 
 const theme = EditorView.theme({
   "&": { color: "var(--editor-fg)", backgroundColor: "var(--editor-bg)" },
@@ -70,6 +83,7 @@ const theme = EditorView.theme({
   ".cm-gutters": { color: "var(--editor-gutter-fg)", backgroundColor: "var(--editor-bg)", border: "none" },
   "&.cm-focused .cm-matchingBracket": { backgroundColor: "var(--editor-bracket)", outline: "none" },
   "&.cm-focused .cm-nonmatchingBracket": { color: "var(--bad)" },
+  ".cm-error-underline": { textDecoration: "underline wavy var(--bad)", textUnderlineOffset: "3px" },
 });
 
 const highlight = HighlightStyle.define([
@@ -113,18 +127,26 @@ function editing(on) {
     : [EditorState.readOnly.of(true), EditorView.editable.of(false)];
 }
 
+// The browser's storage, or a stand-in that remembers nothing when the site's
+// data is blocked (even reading `localStorage` can throw).
+function browserStorage() {
+  try { return localStorage; } catch { return { getItem: () => null, setItem: () => {} }; }
+}
+
 // The Language choice and the bundle trigger, made on first use (after every
 // Language is registered) and shared: the remembered Language is read once.
+// The loading store hears what each Language's download is doing (the status
+// line shows it).
 let choice = null;
 let trigger = null;
+const loading = createLoadingStore();
 function languageChoice() {
   if (choice) return choice;
   trigger = createBundleTrigger({
     languages: languageList(),
-    start: async (name) => languageNamed(name).bundle.start?.(),
+    start: reportingStart(loading, languageNamed),
   });
-  let storage = { getItem: () => null, setItem: () => {} };
-  try { storage = localStorage; } catch { /* blocked site data: nothing is remembered */ }
+  const storage = browserStorage();
   choice = createLanguageChoice({
     names: languageNames(), fallback: DEFAULT_LANGUAGE, storage, onPick: (name) => trigger.onPick(name),
   });
@@ -182,7 +204,7 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
         },
       })),
       lineNumbers(), history(), drawSelection(), indentOnInput(), bracketMatching(),
-      theme, syntaxHighlighting(highlight), language.extension,
+      theme, syntaxHighlighting(highlight), language.extension, underlines(),
       keymap.of([...defaultKeymap, ...historyKeymap]),
       mode.of(editing(true)),
       EditorView.updateListener.of((u) => {
@@ -190,7 +212,10 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
       }),
     ],
   });
-  view = new EditorView({ parent, state: freshState() });
+  let underlinesOn = storage.loadOptions(browserStorage()).underlines;
+  // A state made or restored for the view has no errors and the option as it is now.
+  const settled = (state) => state.update({ effects: [setErrors.of([]), setUnderlinesShown.of(underlinesOn)] }).state;
+  view = new EditorView({ parent, state: settled(freshState()) });
   // The mode of the state about to be shown is swapped in with it (the
   // compartment is shared, so the extension is the only thing that differs).
   const stateFor = (name) => freshState().update({ effects: language.switchTo(languageNamed(name)) }).state;
@@ -212,7 +237,7 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
         const picked = languages.pick(name, view.state);
         if (picked) {
           programmatic = true;
-          try { view.setState(picked.draft ?? stateFor(picked.name)); }
+          try { view.setState(settled(picked.draft ?? stateFor(picked.name))); }
           finally { programmatic = false; }
           view.focus();
         }
@@ -220,10 +245,24 @@ function createEditor(parent, onChange, onEscape, onKey, onCycle) {
       return view.state.doc.toString();
     },
     nextLanguage: () => languages.next(),
+    // Underline these ranges ([[from, to], ...], document offsets) under the
+    // text: a finished check's errors. They go on the next edit and on a
+    // Language switch; with the option off they are kept but not drawn.
+    setErrors(ranges) {
+      view.dispatch({ effects: setErrors.of(ranges.map(([from, to]) => ({ from, to }))) });
+    },
+    // The "Show error underlines" option: saved (type-solution.options) and
+    // applied at once.
+    setUnderlines(on) {
+      underlinesOn = !!on;
+      storage.saveOption(browserStorage(), "underlines", underlinesOn);
+      view.dispatch({ effects: setUnderlinesShown.of(underlinesOn) });
+    },
+    underlines: () => underlinesOn,
     reset() {
       languages.reset();
       programmatic = true;
-      try { view.setState(stateFor(languages.current)); }
+      try { view.setState(settled(stateFor(languages.current))); }
       finally { programmatic = false; }
     },
     focus() { view.focus(); },
@@ -256,6 +295,13 @@ window.TypeSolution = {
   // [[name, title], ...]: the Languages in the dropdown's order.
   languages() { return languageList().map((l) => [l.name, l.title]); },
   registerLanguage,
+  // What the status line shows of a Language's download:
+  // watchLoading((name, state, percent) => ...) hears every change and first
+  // what has already happened; state is "loading", "ready" or "failed",
+  // percent a whole number while loading, -1 when there is none.
+  watchLoading(listener) { languageChoice(); loading.watch(listener); },
+  // Try a failed download again.
+  retryLoading(name) { languageChoice(); trigger.retry(name)?.catch(() => {}); },
   createChecker(url, languageName) {
     return createCheckSession(languageNamed(languageName), { Worker, url });
   },
