@@ -180,3 +180,43 @@ test("an edited Main is compiled again, not taken from the compiler's last outpu
   assert.equal(edited.text.split("\n").filter((l) => /Compiling/.test(l)).length, 1, "only Main was compiled again");
   assert.equal(same.exit, 0);
 });
+
+// The warm-up (ticket 38) with the real compiler worker: the worker real checks
+// use is only preloaded (no compile), a separate throwaway worker compiles the
+// Reference Solution and is killed when a real check starts; the real check that
+// follows, also one started at once, passes and finds the libraries already held.
+test("the warm-up preloads the real worker with no compile, compiles in a throwaway worker, and a real check, also one started mid-warm-up, passes", { skip, timeout: 300000 }, async () => {
+  const p = puzzles().find((q) => q.function === "chunk");
+  const code = reference(p);
+  const Base = nodeWorkerClass({ "purs-compiler.js": editor + "compiler-worker.js", "purs-sandbox.js": editor + "sandbox.js" });
+  const compilers = []; // [{sent: [[type, packs]], terminated}] in the order made
+  const Spy = class extends Base {
+    constructor(url, ...a) {
+      super(url, ...a); workers.push(this);
+      if (/compiler/.test(url)) { this.log = { sent: [], terminated: false }; compilers.push(this.log); }
+    }
+    postMessage(m, ...a) { this.log?.sent.push([m.type, (m.packs ?? []).length]); return super.postMessage(m, ...a); }
+    terminate() { if (this.log) this.log.terminated = true; return super.terminate(); }
+  };
+  const mk = () => createPurescriptChecker({ Worker: Spy, compilerUrl: "http://x/js/purs-compiler.js", sandboxUrl: "http://x/js/purs-sandbox.js", loader, limits });
+  // warmed, then left to finish
+  const warmed = mk();
+  warmed.warmUp(code, p.function, p.tests);
+  await new Promise((r) => setTimeout(r, 4000));
+  assert.deepEqual(compilers[0].sent.map((s) => s[0]), ["init", "preload"], "no compile in the worker real checks use");
+  assert.ok(compilers[0].sent[1][1] >= 2, "the libraries chunk imports, and what they need");
+  assert.deepEqual(compilers[1].sent.map((s) => s[0]), ["init", "check"], "the throwaway compile");
+  assert.equal(compilers[1].terminated, true, "killed when it finished");
+  assert.equal((await warmed.check(code, p.function, p.tests)).status, "pass");
+  assert.deepEqual(compilers[0].sent.at(-1), ["check", 0], "the worker already held every library");
+  // a real check started in the middle of a warm-up
+  compilers.length = 0;
+  const mid = mk();
+  mid.warmUp(code, p.function, p.tests);
+  await new Promise((r) => setTimeout(r, 50));
+  const r = await mid.check(code, p.function, p.tests);
+  assert.equal(r.status, "pass");
+  assert.equal(compilers[0].sent.filter((s) => s[0] === "check").length, 1);
+  if (compilers[1]) assert.equal(compilers[1].terminated, true, "the throwaway compile was killed when the real check began");
+  warmed.stop(); mid.stop();
+});

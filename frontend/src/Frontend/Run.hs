@@ -8,7 +8,7 @@ module Frontend.Run
   ( runWidget
   ) where
 
-import Control.Monad (forM, forM_)
+import Control.Monad (forM, forM_, when)
 import Control.Monad.Fix (MonadFix)
 import Control.Monad.IO.Class (liftIO)
 import Data.IORef (IORef, atomicModifyIORef', newIORef, readIORef)
@@ -176,6 +176,21 @@ runWidget workerUrl = mdo
     case choice of
       Repeat -> pure p
       NewRandom -> randomPuzzle <$> random
+
+  -- A Language's Checker may use the quiet while the page loads and while a
+  -- Puzzle opens to get ready (static/editor/src/languages.mjs, "canWarmUp"):
+  -- once at load, for each new Puzzle and when the Language shown changes, and
+  -- only for the Language shown. It is given the Reference Solution inside the
+  -- Checker; the page shows nothing of it, and no Run event comes of it.
+  let warm l p = liftJSM do
+        can <- canWarmUp l
+        when can do
+          c <- checkerFor l
+          warmUp c (checkRequest p (referenceText l p))
+  eBuilt <- getPostBuild
+  performEvent_ $ warm initial firstPuzzle <$ eBuilt
+  performEvent_ $ ffor (attach (current dLanguage) ePuzzle) (uncurry warm)
+  performEvent_ $ ffor (attach (current dPuzzle) eSwitched) \(p, (l, _)) -> warm l p
 
   -- The hint open for about a second marks the Run peeked; the Run works
   -- that out from when it opened and closed.

@@ -15,6 +15,24 @@
 //      older one's result is dropped. No spare worker;
 //   4. on a clean compile, runs the generated modules in the sandbox
 //      (../../sandbox.mjs): a fresh worker, stopped after 1 s.
+//
+// The optional warm-up (`warmUp(code, fn, tests)`, the Puzzle's Reference
+// Solution; JavaScript's Checker has none) has two parts, both silent:
+//   - a preload: once the compiler is loaded it starts the compiler worker,
+//     fetches the libraries the Solution imports and has the worker put them
+//     in its tree. Nothing is compiled there, so nothing is in flight inside
+//     the worker real checks use. The worker keeps no record of what a preload
+//     gave it until it has said so (a real check that meets one half done
+//     sends the libraries again, which the worker ignores);
+//   - a throwaway compile of the Reference Solution in a SEPARATE worker, with
+//     its own copy of the libraries, whose result is thrown away. It only
+//     warms the engine (the first compile of a page costs 0.15 s more than a
+//     later one, measured, whichever worker made it). A worker can be stopped
+//     only by terminating it, so it is the one that is terminated: the moment
+//     a real check starts, an edit stops one, or it finishes, the throwaway
+//     worker is killed, and the worker real checks use is never touched.
+// Neither starts while a check is in flight or a compile is under way, and
+// a real check cancels one still fetching.
 import { importedModules, librariesFor } from "../../../../bundle/purs-tree.mjs";
 import { createSandbox, timeoutMessage } from "../../sandbox.mjs";
 import { dictionaryKinds, harnessSource, needsHarness } from "./calling.mjs";
@@ -35,6 +53,10 @@ export function createPurescriptChecker({ Worker, compilerUrl, sandboxUrl, loade
   let held = new Set(); // names of the libraries the worker holds
   let tail = Promise.resolve(); // the compile in flight, so the next waits for it
   let nextId = 0;
+  const answers = new Map(); // compile id -> its result handler
+  let compiling = 0;    // compiles posted to the worker and not yet answered
+  let warming = 0;      // the latest warm-up: a newer one or a real check ends an older one
+  let throwaway = null; // {worker, timer}: the warm-up's own compiler worker, if any
 
   function killWorker() {
     if (!worker) return;
@@ -44,24 +66,34 @@ export function createPurescriptChecker({ Worker, compilerUrl, sandboxUrl, loade
     held = new Set();
   }
 
+  // The compiler worker, made if there is none.
+  function ensureWorker() {
+    if (!worker) {
+      const w = new Worker(compilerUrl, { type: "module" });
+      worker = w;
+      held = new Set();
+      w.postMessage({ type: "init", module: loader.module, sourceMtime: loader.manifest.sourceMtime });
+      // One handler for the worker's life: a preload's acknowledgement (the
+      // libraries count as held once the worker says so) and each compile's result.
+      w.onmessage = (e) => {
+        if (worker !== w) return;
+        if (e.data?.type === "preloaded") for (const name of e.data.names) held.add(name);
+        else if (e.data?.type === "result") answers.get(e.data.id)?.(e.data);
+      };
+    }
+    return worker;
+  }
+
   // Resolves {exit, text, modules} or {timeout: true}.
   function compileOnce(job, packs) {
-    if (!worker) {
-      worker = new Worker(compilerUrl, { type: "module" });
-      held = new Set();
-      worker.postMessage({ type: "init", module: loader.module, sourceMtime: loader.manifest.sourceMtime });
-    }
-    const w = worker;
+    const w = ensureWorker();
     const fresh = packs.filter((p) => !held.has(p.header.name));
     const id = ++nextId;
+    compiling++;
     return new Promise((resolve) => {
-      const timer = setTimeout(() => { killWorker(); resolve({ timeout: true }); }, limits.compileMs);
-      w.onmessage = (e) => {
-        if (e.data?.type !== "result" || e.data.id !== id) return;
-        clearTimeout(timer);
-        w.onmessage = null;
-        resolve(e.data);
-      };
+      const done = (value) => { answers.delete(id); compiling--; resolve(value); };
+      const timer = setTimeout(() => { killWorker(); done({ timeout: true }); }, limits.compileMs);
+      answers.set(id, (data) => { clearTimeout(timer); done(data); });
       for (const p of fresh) held.add(p.header.name);
       w.postMessage({ type: "check", id, source: job.source, harness: job.harness, imports: job.imports, packs: fresh });
     });
@@ -74,8 +106,20 @@ export function createPurescriptChecker({ Worker, compilerUrl, sandboxUrl, loade
     return run;
   }
 
+  function killThrowaway() {
+    if (!throwaway) return;
+    const { worker: w, timer } = throwaway;
+    throwaway = null;
+    clearTimeout(timer);
+    w.onmessage = null;
+    w.onerror = null;
+    w.terminate();
+  }
+
   function stop() {
     generation++;
+    warming++;
+    killThrowaway();
     sandbox.stop();
     if (pending) { const p = pending; pending = null; p.resolve(stopped()); }
   }
@@ -97,8 +141,7 @@ export function createPurescriptChecker({ Worker, compilerUrl, sandboxUrl, loade
       }
     }
 
-    const imports = importedModules(source);
-    if (typed) imports.push("Prelude");
+    const imports = importsOf(source, typed);
     let packs;
     try {
       packs = await loader.packs(librariesFor(loader.manifest, imports));
@@ -128,6 +171,42 @@ export function createPurescriptChecker({ Worker, compilerUrl, sandboxUrl, loade
     return { ...fromReply(outcome.text), timing: { compileMs: compiled.ms, sourceFiles: compiled.sourceFiles } };
   }
 
+  // The warm-up: see the top of this file.
+  async function preload(mine, code, fn, tests) {
+    await loader.whenLoaded();
+    const idle = () => mine === warming && pending === null && compiling === 0;
+    if (!idle()) return;
+    const source = /^\s*module\s/.test(code) ? code : HEADER + code;
+    const imports = importsOf(source, needsHarness(dictionaryKinds(code, fn)));
+    const packs = await loader.packs(librariesFor(loader.manifest, imports));
+    if (!idle()) return;
+    const w = ensureWorker();
+    const fresh = packs.filter((p) => !held.has(p.header.name));
+    if (fresh.length > 0) w.postMessage({ type: "preload", packs: fresh });
+    warmCompile(source, imports, packs, fn, tests);
+  }
+
+  // The throwaway compile; see the top of this file.
+  function warmCompile(source, imports, packs, fn, tests) {
+    let harness = null;
+    if (needsHarness(dictionaryKinds(source, fn))) {
+      try { harness = harnessSource({ function: fn, tests }); } catch { return; }
+    }
+    const w = new Worker(compilerUrl, { type: "module" });
+    const timer = setTimeout(killThrowaway, limits.compileMs);
+    throwaway = { worker: w, timer };
+    w.onmessage = (e) => { if (e.data?.type === "result") killThrowaway(); };
+    w.onerror = killThrowaway;
+    w.postMessage({ type: "init", module: loader.module, sourceMtime: loader.manifest.sourceMtime });
+    w.postMessage({ type: "check", id: 0, source, harness, imports, packs });
+  }
+
+  function warmUp(code, fn, tests) {
+    const mine = ++warming;
+    killThrowaway();
+    preload(mine, code, fn, tests).catch(() => {}); // silent: the real check does everything again
+  }
+
   function check(code, fn, tests) {
     stop(); // a newer check ends the older one
     const mine = generation;
@@ -140,7 +219,15 @@ export function createPurescriptChecker({ Worker, compilerUrl, sandboxUrl, loade
     });
   }
 
-  return { check, stop };
+  return { check, stop, warmUp };
+}
+
+// The modules whose libraries a Solution needs: what it imports, and Prelude
+// for the typed path's Harness.
+function importsOf(source, typed) {
+  const imports = importedModules(source);
+  if (typed) imports.push("Prelude");
+  return imports;
 }
 
 // The sandbox's reply text as a Checker result.

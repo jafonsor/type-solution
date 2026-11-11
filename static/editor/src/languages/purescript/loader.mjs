@@ -9,6 +9,8 @@
 //   ready()              resolves once the compiler is ready, whenever that
 //                        is, even after a failed download that a retry fixes:
 //                        a check waits here and runs when loading finishes.
+//   whenLoaded()         resolves once the compiler is ready; unlike ready(),
+//                        it never starts the download (the warm-up)
 //   module, manifest     the compiled compiler and the manifest, once ready
 //   packs(libraries)     the decoded packs of the libraries and what they need
 //   names()              the name table's bytes (the import popup), alone: it
@@ -54,6 +56,10 @@ export function createLoader({ createBundle, compile = (bytes) => WebAssembly.co
     ready() {
       if (module) return Promise.resolve();
       if (!loading) self.start().catch(() => {}); // a check before anyone asked: ask now
+      return new Promise((resolve) => waiters.push(resolve));
+    },
+    whenLoaded() {
+      if (module) return Promise.resolve();
       return new Promise((resolve) => waiters.push(resolve));
     },
     packs: (libraries) => get().partsWithRequirements(libraries),
