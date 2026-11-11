@@ -13,7 +13,7 @@
 //
 // The site comes from `nix build -o app`, `nix build .#purs-bundle -o pb`, then
 // `tools/export-site.sh app site /type-solution/ pb`. Not part of `npm test`
-// (needs Chrome and playwright-core); ticket 33 owns the permanent smoke test.
+// (needs Chrome and playwright-core). The permanent, small one run in CI is smoke-purescript.mjs (ticket 33).
 import { createRequire } from "node:module";
 import http from "node:http";
 import { createReadStream, readFileSync, readdirSync, statSync } from "node:fs";

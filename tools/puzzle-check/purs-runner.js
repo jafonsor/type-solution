@@ -91,9 +91,19 @@ export const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*[A-Za-z]/g, "");
 
 // The first error in the compiler's text as one line: "line:col message".
 // Positions refer to the player's code, so the module header we add is taken
-// off the line number.
+// off the line number. Only an Error block counts: warnings come first and are
+// skipped, and a block ends at the next "Error found:" / "Warning 2 of 3:"
+// header, as in the browser Checker (static/editor/src/languages/purescript/
+// errors.mjs). Text with no Error block (a crash) is read whole.
+const blockHeader = /^(Error|Warning)(?: \d+ of \d+)?(?: found)?:\s*$/;
+
 export function firstError(text, lineOffset) {
-  const lines = stripAnsi(text).split(/\r?\n/);
+  let lines = stripAnsi(text).split(/\r?\n/);
+  const start = lines.findIndex((l) => /^Error(?: \d+ of \d+)?(?: found)?:\s*$/.test(l));
+  if (start >= 0) {
+    const next = lines.findIndex((l, i) => i > start && (blockHeader.test(l) || /^RESULT:/.test(l)));
+    lines = lines.slice(start + 1, next >= 0 ? next : undefined);
+  }
   const at = lines.findIndex((l) => /^\s*at \S+:\d+:\d+/.test(l));
   const pos = at >= 0 ? /:(\d+):(\d+)/.exec(lines[at]) : null;
   const rest = lines.slice(at >= 0 ? at + 1 : 0).filter((l) => !/^\s*(Error|Warning) found/.test(l));

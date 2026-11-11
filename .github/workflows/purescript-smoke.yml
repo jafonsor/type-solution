@@ -1,0 +1,96 @@
+# One browser smoke test for the PureScript check (ticket 33). Builds the app and
+# the PureScript bundle, exports the site as the deploy does, and drives the
+# real Checker in Chrome: the fixed Puzzle's Reference Solution passes, a type
+# error and a syntax error give messages, and the type error reads the same as
+# puzzle-check's (so the browser and Node checks cannot drift apart).
+# Never publishes anything. Not part of deploy.yml.
+name: PureScript smoke test
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "static/editor/**"
+      - "static/bundle/**"
+      - "languages/purescript/**"
+      - "tools/puzzle-check/**"
+      - "tools/purs-bundle/**"
+      - "tools/export-site.sh"
+      - "purs-wasm.nix"
+      - "purs-bundle.nix"
+      - ".github/workflows/purescript-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "static/editor/**"
+      - "static/bundle/**"
+      - "languages/purescript/**"
+      - "tools/puzzle-check/**"
+      - "tools/purs-bundle/**"
+      - "tools/export-site.sh"
+      - "purs-wasm.nix"
+      - "purs-bundle.nix"
+      - ".github/workflows/purescript-smoke.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: purescript-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      # The runner starts with ~14 GB free; the Nix store needs more.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      - uses: cachix/install-nix-action@v31
+        with:
+          extra_nix_config: |
+            accept-flake-config = true
+            fallback = true
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v13
+
+      # The same three builds as deploy.yml, so the Nix cache it fills is reused.
+      - name: Build
+        run: nix build -L -o app
+
+      - name: Build the PureScript bundle
+        run: nix build -L .#purs-bundle -o purs-bundle
+
+      - name: Export the site
+        run: tools/export-site.sh app site /type-solution/ purs-bundle
+
+      # puzzle-check's side of the comparison: the released compiler and the
+      # pinned library sources.
+      - name: Compiler and library sources for puzzle-check
+        run: |
+          echo "PURS_WASM=$(nix build .#purs-core-wasm --no-link --print-out-paths)" >> "$GITHUB_ENV"
+          echo "PURS_LIBS=$(nix build .#purs-bundle.libs --no-link --print-out-paths)" >> "$GITHUB_ENV"
+
+      - name: Install the driver's dependencies
+        run: |
+          npm ci --prefix tools/puzzle-check
+          npm install --prefix "$RUNNER_TEMP/driver" --no-save --no-package-lock playwright-core@1.65.0
+
+      # Google Chrome is on the runner image; the driver uses it as channel "chrome".
+      - name: Smoke test
+        env:
+          TOOLS: ${{ runner.temp }}/driver
+        run: node static/editor/browser/smoke-purescript.mjs site

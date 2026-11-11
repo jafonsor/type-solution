@@ -42,7 +42,12 @@ let
     ];
   };
 in
-runCommand "purs-bundle-${pinned.packageSet}" { nativeBuildInputs = [ nodejs ]; } ''
+runCommand "purs-bundle-${pinned.packageSet}" {
+  nativeBuildInputs = [ nodejs ];
+  # The library sources (`<name>/src/**`), for PURS_LIBS: `nix build .#purs-bundle.libs`
+  # (the browser smoke test compares puzzle-check's compiler run with the page's).
+  passthru = { inherit libs; };
+} ''
   node --no-warnings ${src}/tools/purs-bundle/build.mjs \
     --wasm ${purs-core-wasm} --libs ${libs} --out $out
 ''

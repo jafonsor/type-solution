@@ -42,6 +42,13 @@ compiled("a type error gives one line with line and column", async () => {
   assert.doesNotMatch(problems[0], /\n|\x1b/);
 });
 
+// A Warning block comes before the Error block: the error is the one reported.
+compiled("a warning before a type error is not the one reported", async () => {
+  const problems = await purescriptProblems(clamp, solution("warning-then-error"));
+  assert.equal(problems.length, 1);
+  assert.match(problems[0], /^compile error at 5:17 Could not match type String with type Int/);
+});
+
 compiled("a syntax error gives one line with line and column", async () => {
   const problems = await purescriptProblems(clamp, solution("syntax-error"));
   assert.equal(problems.length, 1);

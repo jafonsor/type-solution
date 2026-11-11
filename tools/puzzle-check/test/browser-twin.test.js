@@ -93,3 +93,45 @@ RESULT: errors
   // puzzle-check: "line:col message", the module header taken off the line.
   assert.equal(`${compileError(text, code, 1, false).line}:${compileError(text, code, 1, false).column} ${compileError(text, code, 1, false).message}`, firstError(text, 1));
 });
+
+// Which error is "first": the browser takes the first Error block and skips
+// Warning blocks; puzzle-check used to take the first `at` line of any block
+// (ticket 33). The text is what the compiler printed for
+// test/purs-fixtures/warning-then-error.purs.
+test("warnings before the error are skipped by both, and a block without a See link ends at the next block", () => {
+  const warning = (n, name, col) => `Warning ${n} of 3:
+
+  in module \x1b[33mMain\x1b[0m
+  at /w/src/Main.purs:6:${col} - 6:${col + 2} (line 6, column ${col} - line 6, column ${col + 2})
+
+    Name \x1b[33m${name}\x1b[0m was introduced but not used.
+
+  in value declaration \x1b[33mclamp\x1b[0m
+
+  See https://github.com/purescript/documentation/blob/master/errors/UnusedName.md for more information,
+  or to contribute content related to this warning.
+
+`;
+  const error = (line, what, see) => `Error found:
+in module \x1b[33mMain\x1b[0m
+at /w/src/Main.purs:${line}:17 - ${line}:23 (line ${line}, column 17 - line ${line}, column 23)
+
+  ${what}
+
+in value declaration \x1b[33mclamp\x1b[0m
+${see ? "\nSee https://github.com/purescript/documentation/blob/master/errors/TypesDoNotUnify.md for more information,\nor to contribute content related to this error.\n" : ""}
+`;
+  const code = "x".repeat(30) + "\n".repeat(0) + ("\n" + "x".repeat(30)).repeat(9);
+  const same = (text) => {
+    const e = compileError(text, code, 1, false);
+    assert.equal(`${e.line}:${e.column} ${e.message}`, firstError(text, 1));
+    return e;
+  };
+  const warned = warning(1, "x", 7) + warning(2, "lo", 9) + warning(3, "hi", 12) + error(6, "Could not match type String with type Int", true) + "RESULT: errors\n";
+  const e = same(warned);
+  assert.equal(`${e.line}:${e.column}`, "5:17", "the error's position, not the first warning's 5:7");
+  assert.match(e.message, /^Could not match type String with type Int/);
+  // The first error has no See link: its message stops at the second block.
+  same(error(6, "First one", false) + error(7, "Second one", false) + "RESULT: errors\n");
+  assert.equal(firstError(error(6, "First one", false) + error(7, "Second one", false), 1), "5:17 First one in value declaration clamp");
+});
