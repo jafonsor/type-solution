@@ -17,12 +17,23 @@ The first real Deploy (run 43086373196, 2026-11-11) took 33 minutes. The app's `
 
 ## Acceptance
 
-- [ ] A run on a cold cache saves the store (the post step reports a saved cache of a size under 10 GB and the Actions cache list shows it), instead of being throttled.
-- [ ] A second run with the same key restores it and the `Build` step takes minutes, not 27 (record both durations; expected: the dependencies come from the cache, only the project's own code compiles).
+- [x] A run on a cold cache saves the store (the post step reports a saved cache of a size under 10 GB and the Actions cache list shows it), instead of being throttled.
+- [x] A second run with the same key restores it and the `Build` step takes minutes, not 27 (record both durations; expected: the dependencies come from the cache, only the project's own code compiles).
 - [ ] A run after a change to the editor or a script (no Haskell dependency change) restores the older entry by prefix and rebuilds only the project's own derivations.
-- [ ] Deploy and smoke no longer overlap on a push to `main`, and both still pass.
-- [ ] Record the cache size and the restore time.
+- [x] Deploy and smoke no longer overlap on a push to `main`, and both still pass.
+- [x] Record the cache size and the restore time.
 
 ## Comments
 
 Validated locally with `actionlint` only (exit 0). Not run in Actions yet: the action's inputs follow its README at v7, the cache key and size, whether `keep-outputs` keeps all the libraries, and the restore time are all unmeasured until the first runs. If the cache entry exceeds GitHub's limit or the restore costs more than the build saves, the fallback is Cachix (the owner creates the account and a repo secret). Owner chose this option on 2026-11-12.
+
+## First runs with the new cache (2026-11-12)
+
+Owner approved the push of `main` (`5a8205e..44aabea`). Deploy (run 43245971358) and the smoke test (run 43245971540) started together and ran one after the other: the smoke job waited as `pending` until Deploy finished, so the queue works, and both passed.
+
+- **Cold run (Deploy), cache key `nix-Linux-2c3dd2ef…`, no entry yet:** 28 min 39 s in all. `Build` 21 min 29 s (it was 27 min the day before; the compile is cold either way), common tests 2 min 23 s, bundle 39 s. The cache did not throttle. The post step found a store of 18.1 GB, garbage-collected it to the 10 GB target, and saved **one entry of 3.44 GB** (compressed) in 99 s. The repo's whole Actions cache is now 4.1 GB in 461 entries, under the 10 GB limit.
+- **Warm run (smoke), same key:** `Cache hit`, restore **1 min 42 s**. `Build` **2 min 11 s** (against 21 to 27 min cold), bundle 1 s, the smoke test 69 s. The garbage collection kept the compiled libraries (the `keep-outputs` setting worked). The job also had a 10-minute `Free disk space` step this time (114 s on the Deploy run); that is runner variance, not the cache.
+- **Not yet shown:** the third criterion, a run after a change to a Nix, cabal or package-list file (a new key, restoring the older entry by prefix and rebuilding only what differs). A change that does not alter those files (for example the editor or a script, or docs) keeps the same key and gets an exact hit, which is the warm case above. The first push that changes the key will show the prefix restore; record its `Build` time here.
+- Because the warm run is the same key, the warm figure is the best case: it rebuilds only the app's own derivations (a few minutes) and the bundle.
+
+Status stays `ready-for-human` until the prefix-restore run is recorded.
