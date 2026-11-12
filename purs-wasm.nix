@@ -2,6 +2,7 @@
 # https://github.com/jafonsor/purs-wasm and published as a GitHub Release asset.
 # To bump it: tag a new release there, then change `tag` and `sha256` below
 # (see "Bumping the compiler" in tools/puzzle-check/README.md).
+# (Editing any .nix file changes the CI Nix-store cache key; see ticket 40.)
 { fetchurl }:
 
 let
