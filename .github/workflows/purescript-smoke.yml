@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: read
+  actions: write # the Nix store cache purges its own old entries
 
 concurrency:
   group: purescript-smoke-${{ github.ref }}
@@ -33,6 +34,12 @@ concurrency:
 jobs:
   smoke:
     runs-on: ubuntu-latest
+    # One Nix build job at a time across the Deploy and smoke workflows: both
+    # write the same Nix store cache, and the second one then finds what the
+    # first built.
+    concurrency:
+      group: nix-build
+      cancel-in-progress: false
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
@@ -55,8 +62,24 @@ jobs:
           extra_nix_config: |
             accept-flake-config = true
             fallback = true
+            keep-outputs = true
+            keep-derivations = true
 
-      - uses: DeterminateSystems/magic-nix-cache-action@v13
+      # Keep the Nix store between runs as one cache entry, so a run builds only
+      # what changed since the last one (ticket 40). Replaces magic-nix-cache,
+      # which uploads one small entry per path and was throttled by GitHub's
+      # cache API on the first real deploy, so nothing built was ever saved.
+      - name: Nix store cache
+        uses: nix-community/cache-nix-action@v7
+        with:
+          primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/*.cabal', 'cabal.project', 'languages/purescript/packages.json', 'languages/purescript/source-hashes.json') }}
+          restore-prefixes-first-match: nix-${{ runner.os }}-
+          gc-max-store-size-linux: 10G
+          purge: true
+          purge-prefixes: nix-${{ runner.os }}-
+          purge-created: 0
+          purge-last-accessed: P7D
+          purge-primary-key: never
 
       # The same three builds as deploy.yml, so the Nix cache it fills is reused.
       - name: Build
@@ -72,8 +95,8 @@ jobs:
       # pinned library sources.
       - name: Compiler and library sources for puzzle-check
         run: |
-          echo "PURS_WASM=$(nix build .#purs-core-wasm --no-link --print-out-paths)" >> "$GITHUB_ENV"
-          echo "PURS_LIBS=$(nix build .#purs-bundle.libs --no-link --print-out-paths)" >> "$GITHUB_ENV"
+          echo "PURS_WASM=$(nix build .#purs-core-wasm -o purs-core-wasm --print-out-paths)" >> "$GITHUB_ENV"
+          echo "PURS_LIBS=$(nix build .#purs-bundle.libs -o purs-libs --print-out-paths)" >> "$GITHUB_ENV"
 
       - name: Install the driver's dependencies
         run: |
